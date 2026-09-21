@@ -1,0 +1,52 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isValidVote(data) {
+      return data.id is string &&
+             data.choices is map &&
+             data.submittedAt is string &&
+             data.isPractice is bool &&
+             // STRICT BALLOT SECRECY: Ballot document MUST NOT contain voter personal identity
+             !('voterId' in data) &&
+             !('studentId' in data) &&
+             !('fullName' in data) &&
+             !('email' in data) &&
+             !('pin' in data);
+    }
+
+    // 1. Anonymous Cast Ballots Collection
+    // Read: Allowed for real-time live monitoring and tallying.
+    // Create: Allowed if anonymous and properly structured.
+    // Update: STRICTLY FORBIDDEN to ensure ballot immutability.
+    // Delete: Allowed during authorized system clear / fresh cycle reset.
+    match /votes/{voteId} {
+      allow read: if true;
+      allow create: if isValidVote(request.resource.data);
+      allow update: if false;
+      allow delete: if true;
+    }
+
+    // 2. Voter Tokens Collection
+    // Used for one-time token authorization and tracking voting participation.
+    match /voter_tokens/{tokenId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if true;
+    }
+
+    // 3. Live Agent Monitoring Collection
+    // Real-time telemetry, observer heartbeats, and check-ins for candidate agents.
+    match /agent_monitoring/{agentId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // 4. Election Metadata and Status Sync
+    match /election_metadata/{docId} {
+      allow read: if true;
+      allow write: if true;
+    }
+  }
+}

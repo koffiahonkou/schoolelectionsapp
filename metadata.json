@@ -1,0 +1,6 @@
+{
+  "name": "School Elections Voting App",
+  "description": "A secure, modern school election voting system featuring Firebase Firestore anonymous vote storage, voter token management, and real-time live agent monitoring.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

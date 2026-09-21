@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "1.0.0",
+  "entities": {
+    "votes": {
+      "description": "Cryptographically secure and strictly anonymous cast ballots. Decoupled from voter identities to enforce secret ballot guarantees.",
+      "documentIdPattern": "bal-{timestamp}-{random}",
+      "fields": {
+        "id": { "type": "string", "description": "Unique anonymous ballot identifier", "required": true },
+        "choices": { "type": "map", "description": "Map of position ID to selected candidate ID or abstain token", "required": true },
+        "submittedAt": { "type": "string", "description": "ISO 8601 timestamp when ballot was deposited", "required": true },
+        "isPractice": { "type": "boolean", "description": "Whether ballot was cast in demo/practice booth mode", "required": true },
+        "evidenceHash": { "type": "string", "description": "SHA-256 cryptographic audit receipt hash", "required": false },
+        "clientTimestamp": { "type": "number", "description": "Unix millisecond timestamp of submission", "required": false }
+      }
+    },
+    "voter_tokens": {
+      "description": "Cryptographic voter authorization tokens and eligibility registry. Used to enforce one-vote-per-student limit without exposing ballot choices.",
+      "documentIdPattern": "token-{voterId}",
+      "fields": {
+        "id": { "type": "string", "description": "Token document ID (token-{normalizedVoterId})", "required": true },
+        "voterId": { "type": "string", "description": "Student or Voter ID", "required": true },
+        "token": { "type": "string", "description": "Unique 8-character voter PIN or access token", "required": true },
+        "fullName": { "type": "string", "description": "Student's registered full name", "required": true },
+        "hasVoted": { "type": "boolean", "description": "True once the student has cast a ballot", "required": true },
+        "votedAt": { "type": "string", "description": "Timestamp when ballot was cast (null if not voted)", "required": false },
+        "status": { "type": "string", "description": "Status of the token: active, used, or revoked", "required": true },
+        "issuedAt": { "type": "string", "description": "ISO timestamp when the token was issued", "required": true }
+      }
+    },
+    "agent_monitoring": {
+      "description": "Live real-time observer and candidate polling agent telemetry, check-ins, and heartbeat records.",
+      "documentIdPattern": "agent-{agentId}",
+      "fields": {
+        "id": { "type": "string", "description": "Unique agent registration ID", "required": true },
+        "agentName": { "type": "string", "description": "Name of the polling agent or observer", "required": true },
+        "representedCandidate": { "type": "string", "description": "Aspirant or party being observed, or Independent", "required": true },
+        "role": { "type": "string", "description": "Candidate Agent, Independent Observer, or EC Monitor", "required": true },
+        "status": { "type": "string", "description": "online, observing, or inactive", "required": true },
+        "lastHeartbeat": { "type": "string", "description": "ISO timestamp of the most recent agent ping", "required": true },
+        "station": { "type": "string", "description": "Assigned polling station or online booth", "required": true },
+        "notes": { "type": "string", "description": "Observations or scrutiny remarks logged by agent", "required": false }
+      }
+    },
+    "election_metadata": {
+      "description": "Real-time election configuration, status, and synchronization state.",
+      "documentIdPattern": "current",
+      "fields": {
+        "status": { "type": "string", "description": "Setup, Open, Paused, Closed, or Results Published", "required": true },
+        "totalEligibleVoters": { "type": "number", "description": "Count of registered voters", "required": false },
+        "lastUpdated": { "type": "string", "description": "ISO timestamp of last update", "required": true },
+        "updatedBy": { "type": "string", "description": "User or administrator who performed the update", "required": false },
+        "config": { "type": "map", "description": "Election configuration details", "required": false },
+        "positions": { "type": "array", "description": "Configured electoral positions", "required": false },
+        "candidates": { "type": "array", "description": "Nominated candidates list", "required": false },
+        "voters": { "type": "array", "description": "Voter roster list", "required": false },
+        "accounts": { "type": "array", "description": "Staff and user accounts", "required": false }
+      }
+    }
+  }
+}

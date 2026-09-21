@@ -1,0 +1,527 @@
+{
+  "data": {
+    "config": {
+      "id": "config-1",
+      "title": "2026 Student Representative Council Elections",
+      "schoolName": "Accra Academy Senior High School",
+      "date": "September 9, 2026",
+      "requirePin": true,
+      "adminPin": "admin123",
+      "hideTalliesDuringVoting": true,
+      "allowPracticeBallot": true,
+      "endDate": "2026-09-09T08:13:29.069Z",
+      "showClockToVoters": true
+    },
+    "positions": [
+      {
+        "id": "pos-1",
+        "title": "SRC President",
+        "description": "Head of the Student Representative Council and chief student liaison to school leadership.",
+        "maxSelections": 1,
+        "order": 1
+      },
+      {
+        "id": "pos-2",
+        "title": "Vice President",
+        "description": "Assists the President, leads student committee projects, and presides in the President’s absence.",
+        "maxSelections": 1,
+        "order": 2
+      },
+      {
+        "id": "pos-3",
+        "title": "General Secretary",
+        "description": "Maintains official meeting records, coordinates agendas, and manages student council communications.",
+        "maxSelections": 1,
+        "order": 3
+      },
+      {
+        "id": "pos-4",
+        "title": "Treasurer",
+        "description": "Oversees student activity funds, club budgets, and publishes transparent financial reports.",
+        "maxSelections": 1,
+        "order": 4
+      },
+      {
+        "id": "pos-5",
+        "title": "Public Relations Officer (P.R.O.)",
+        "description": "Manages announcements, bulletin boards, social campaigns, and school spirit initiatives.",
+        "maxSelections": 1,
+        "order": 5
+      }
+    ],
+    "candidates": [
+      {
+        "id": "cand-1",
+        "positionId": "pos-1",
+        "name": "Maya Lin",
+        "slogan": "Action, Accountability, and All Voices Heard.",
+        "photoUrl": "",
+        "manifesto": "As your SRC President, I will advocate for improved study hall spaces, transparent communication between students and administration, and an open forum every month where any student can submit ideas directly to the council."
+      },
+      {
+        "id": "cand-2",
+        "positionId": "pos-1",
+        "name": "Marcus Adebayo",
+        "slogan": "Uniting Our Campus for a Stronger Future.",
+        "photoUrl": "",
+        "manifesto": "My goal is to expand student club funding, revitalize inter-class sports tournaments, and partner with the cafeteria to introduce healthier, student-voted snack options throughout the semester."
+      },
+      {
+        "id": "cand-3",
+        "positionId": "pos-2",
+        "name": "Elena Rostova",
+        "slogan": "Dedicated to Teamwork and Inclusive Programs.",
+        "photoUrl": "",
+        "manifesto": "I plan to launch a peer mentorship program connecting incoming junior students with senior study buddies, and organize school-wide wellness weeks during midterms."
+      },
+      {
+        "id": "cand-4",
+        "positionId": "pos-2",
+        "name": "Tariq Hassan",
+        "slogan": "Practical Solutions for Real Student Needs.",
+        "photoUrl": "",
+        "manifesto": "I will establish a streamlined digital suggestion box, ensure school lockers and equipment are promptly serviced, and support student-led community outreach drives."
+      },
+      {
+        "id": "cand-5",
+        "positionId": "pos-3",
+        "name": "Chloe Bennett",
+        "slogan": "Organized, Dependable, and Always Informed.",
+        "photoUrl": "",
+        "manifesto": "Minutes will be published within 24 hours of every SRC meeting on our school notice board. Every student will always know what decisions are being made on their behalf."
+      },
+      {
+        "id": "cand-6",
+        "positionId": "pos-3",
+        "name": "Daniel Chen",
+        "slogan": "Clear Notes, Clear Vision.",
+        "photoUrl": "",
+        "manifesto": "I will build a shared digital newsletter and calendar so no student ever misses a club signup, spirit day theme, or leadership deadline."
+      },
+      {
+        "id": "cand-7",
+        "positionId": "pos-4",
+        "name": "Sofia Al-Mansoor",
+        "slogan": "Every Cent Accounted For, Every Club Supported.",
+        "photoUrl": "",
+        "manifesto": "I bring two years of club bookkeeping experience. I will ensure fair and equitable budget allocations across arts, STEM, athletics, and cultural societies."
+      },
+      {
+        "id": "cand-8",
+        "positionId": "pos-4",
+        "name": "Liam O’Connor",
+        "slogan": "Transparency and Smart Resource Allocation.",
+        "photoUrl": "",
+        "manifesto": "I pledge to publish quarterly visual budget graphs so the entire student body can see exactly how council dues and fundraiser proceeds are utilized."
+      },
+      {
+        "id": "cand-9",
+        "positionId": "pos-5",
+        "name": "Amara Okafor",
+        "slogan": "Bringing Energy, Spirit, and Creativity.",
+        "photoUrl": "",
+        "manifesto": "From high-energy pep rallies to vibrant graphic flyers for campus events, I will make sure our school spirit is higher than ever before!"
+      },
+      {
+        "id": "cand-10",
+        "positionId": "pos-5",
+        "name": "Lucas Vance",
+        "slogan": "Your Stories, Your Voice, Front and Center.",
+        "photoUrl": "",
+        "manifesto": "I will highlight student achievements, showcase classroom projects, and run student spotlight interviews on the main hallway video displays."
+      }
+    ],
+    "voters": [
+      {
+        "id": "v-1",
+        "fullName": "Jordan Taylor",
+        "voterId": "STU101",
+        "pin": "7K9X2M4P",
+        "hasVoted": true,
+        "votedAt": "2026-09-09T02:45:12.983Z"
+      },
+      {
+        "id": "v-2",
+        "fullName": "Samantha Reed",
+        "voterId": "STU102",
+        "pin": "3H8N5W2R",
+        "hasVoted": false,
+        "votedAt": null
+      },
+      {
+        "id": "v-3",
+        "fullName": "Alex Rivera",
+        "voterId": "STU103",
+        "pin": "9B4T7Q1Y",
+        "hasVoted": false,
+        "votedAt": null
+      },
+      {
+        "id": "v-4",
+        "fullName": "Kwame Asante",
+        "voterId": "STU104",
+        "pin": "6V2P8M3K",
+        "hasVoted": false,
+        "votedAt": null
+      },
+      {
+        "id": "v-5",
+        "fullName": "Fatima Zahra",
+        "voterId": "STU105",
+        "pin": "4N9D2X7L",
+        "hasVoted": false,
+        "votedAt": null
+      },
+      {
+        "id": "v-6",
+        "fullName": "Brandon Lee",
+        "voterId": "STU106",
+        "pin": "8J3C6Y9T",
+        "hasVoted": false,
+        "votedAt": null
+      },
+      {
+        "id": "v-7",
+        "fullName": "Priya Sharma",
+        "voterId": "STU107",
+        "pin": "2W7K5M8A",
+        "hasVoted": false,
+        "votedAt": null
+      },
+      {
+        "id": "v-8",
+        "fullName": "Noah Williams",
+        "voterId": "STU108",
+        "pin": "5F9H3Q6Z",
+        "hasVoted": false,
+        "votedAt": null
+      },
+      {
+        "id": "v-9",
+        "fullName": "Zoe Martinez",
+        "voterId": "STU109",
+        "pin": "9X4L7P2E",
+        "hasVoted": false,
+        "votedAt": null
+      },
+      {
+        "id": "v-10",
+        "fullName": "David Kim",
+        "voterId": "STU110",
+        "pin": "3M8B5T9C",
+        "hasVoted": false,
+        "votedAt": null
+      },
+      {
+        "id": "v-11",
+        "fullName": "Aisha Bello",
+        "voterId": "STU111",
+        "pin": "7R2K9V4N",
+        "hasVoted": false,
+        "votedAt": null
+      },
+      {
+        "id": "v-12",
+        "fullName": "Ethan Murphy",
+        "voterId": "STU112",
+        "pin": "4T6M8J3W",
+        "hasVoted": false,
+        "votedAt": null
+      },
+      {
+        "id": "v-13",
+        "fullName": "Grace Osei",
+        "voterId": "STU113",
+        "pin": "8Q3X7P9Y",
+        "hasVoted": false,
+        "votedAt": null
+      },
+      {
+        "id": "v-14",
+        "fullName": "Mateo Gomez",
+        "voterId": "STU114",
+        "pin": "2L9N4C7F",
+        "hasVoted": false,
+        "votedAt": null
+      },
+      {
+        "id": "v-15",
+        "fullName": "Hanna Lindstrom",
+        "voterId": "STU115",
+        "pin": "6K2W8M5V",
+        "hasVoted": false,
+        "votedAt": null
+      }
+    ],
+    "ballots": [
+      {
+        "id": "bal-1788921040453-l7ncor",
+        "submittedAt": "2026-09-09T02:30:40.453Z",
+        "isPractice": true,
+        "choices": {
+          "pos-1": "cand-2",
+          "pos-2": "cand-3",
+          "pos-3": "__ABSTAIN__",
+          "pos-4": "cand-8",
+          "pos-5": "cand-9"
+        }
+      },
+      {
+        "id": "bal-1788921612949-040onn",
+        "submittedAt": "2026-09-09T02:40:12.949Z",
+        "isPractice": true,
+        "choices": {
+          "pos-1": "cand-2",
+          "pos-2": "cand-3",
+          "pos-3": "cand-6",
+          "pos-4": "__ABSTAIN__",
+          "pos-5": "cand-10"
+        }
+      },
+      {
+        "id": "bal-1788921912980-07saq",
+        "submittedAt": "2026-09-09T02:45:12.980Z",
+        "isPractice": false,
+        "choices": {
+          "pos-1": "__ABSTAIN__",
+          "pos-2": "__ABSTAIN__",
+          "pos-3": "__ABSTAIN__",
+          "pos-4": "__ABSTAIN__",
+          "pos-5": "__ABSTAIN__"
+        }
+      },
+      {
+        "id": "bal-1788922921392-4heizo",
+        "submittedAt": "2026-09-09T03:02:01.392Z",
+        "isPractice": true,
+        "choices": {
+          "pos-1": "cand-2",
+          "pos-2": "cand-4",
+          "pos-3": "cand-6",
+          "pos-4": "cand-8",
+          "pos-5": "cand-10"
+        }
+      }
+    ],
+    "auditLogs": [
+      {
+        "id": "log-init-1",
+        "timestamp": "2026-09-09T02:13:29.070Z",
+        "eventType": "settings_updated",
+        "details": "Initial election configuration and ballot rules created.",
+        "category": "security"
+      },
+      {
+        "id": "log-1788920756686-5mc",
+        "timestamp": "2026-09-09T02:25:56.686Z",
+        "eventType": "setup_unlocked",
+        "details": "Ballot setup mode unlocked by Administrator.",
+        "category": "election"
+      },
+      {
+        "id": "log-1788921040454-hy1v",
+        "timestamp": "2026-09-09T02:30:40.453Z",
+        "eventType": "ballot_submitted",
+        "details": "Demo practice ballot cast.",
+        "category": "ballot"
+      },
+      {
+        "id": "log-1788921157542-a62",
+        "timestamp": "2026-09-09T02:32:37.542Z",
+        "eventType": "results_published",
+        "details": "Official certified results published for public viewing.",
+        "category": "election"
+      },
+      {
+        "id": "log-1788921159972-02t",
+        "timestamp": "2026-09-09T02:32:39.972Z",
+        "eventType": "voting_closed",
+        "details": "Voting stations closed. Ballots locked.",
+        "category": "election"
+      },
+      {
+        "id": "log-1788921227502-zc2",
+        "timestamp": "2026-09-09T02:33:47.502Z",
+        "eventType": "setup_unlocked",
+        "details": "Ballot setup mode unlocked by Administrator.",
+        "category": "election"
+      },
+      {
+        "id": "log-1788921612949-3gqd",
+        "timestamp": "2026-09-09T02:40:12.949Z",
+        "eventType": "ballot_submitted",
+        "details": "Demo practice ballot cast.",
+        "category": "ballot"
+      },
+      {
+        "id": "log-1788921912983",
+        "timestamp": "2026-09-09T02:45:12.983Z",
+        "eventType": "ballot_submitted",
+        "details": "Official anonymous ballot deposited. Total ballots: 1/15.",
+        "category": "ballot"
+      },
+      {
+        "id": "log-1788922921392-ad5r",
+        "timestamp": "2026-09-09T03:02:01.392Z",
+        "eventType": "ballot_submitted",
+        "details": "Demo practice ballot cast.",
+        "category": "ballot"
+      },
+      {
+        "id": "log-1788924343401-1up",
+        "timestamp": "2026-09-09T03:25:43.401Z",
+        "eventType": "roster_imported",
+        "details": "Generated new 8-digit unique code (TGJ48XJL) for Samantha Reed.",
+        "category": "roster"
+      },
+      {
+        "id": "log-1788924359320-g0s",
+        "timestamp": "2026-09-09T03:25:59.320Z",
+        "eventType": "roster_imported",
+        "details": "Generated new 8-digit unique code (SCN7KBK5) for Samantha Reed.",
+        "category": "roster"
+      },
+      {
+        "id": "log-1788924380857-bpp",
+        "timestamp": "2026-09-09T03:26:20.857Z",
+        "eventType": "roster_imported",
+        "details": "Generated new 8-digit unique code (U4H3CFQV) for Samantha Reed.",
+        "category": "roster"
+      },
+      {
+        "id": "log-1788924385081-kjp",
+        "timestamp": "2026-09-09T03:26:25.081Z",
+        "eventType": "roster_imported",
+        "details": "Generated new 8-digit unique code (LXXCV424) for Kwame Asante.",
+        "category": "roster"
+      },
+      {
+        "id": "log-1788924386712-5h0",
+        "timestamp": "2026-09-09T03:26:26.712Z",
+        "eventType": "roster_imported",
+        "details": "Generated new 8-digit unique code (WRKWB4G9) for Fatima Zahra.",
+        "category": "roster"
+      },
+      {
+        "id": "log-1788924390712-2k7",
+        "timestamp": "2026-09-09T03:26:30.712Z",
+        "eventType": "roster_imported",
+        "details": "Generated new 8-digit unique code (ZX56UR5K) for Brandon Lee.",
+        "category": "roster"
+      },
+      {
+        "id": "log-1788924393488-g3t",
+        "timestamp": "2026-09-09T03:26:33.488Z",
+        "eventType": "roster_imported",
+        "details": "Generated new 8-digit unique code (GYEWEY86) for Noah Williams.",
+        "category": "roster"
+      },
+      {
+        "id": "log-1788924395195-vpo",
+        "timestamp": "2026-09-09T03:26:35.195Z",
+        "eventType": "roster_imported",
+        "details": "Generated new 8-digit unique code (5PZ879BY) for Zoe Martinez.",
+        "category": "roster"
+      },
+      {
+        "id": "log-1788924395858-2bu",
+        "timestamp": "2026-09-09T03:26:35.858Z",
+        "eventType": "roster_imported",
+        "details": "Generated new 8-digit unique code (VW94VR2Y) for David Kim.",
+        "category": "roster"
+      },
+      {
+        "id": "log-1788924396720-75i",
+        "timestamp": "2026-09-09T03:26:36.720Z",
+        "eventType": "roster_imported",
+        "details": "Generated new 8-digit unique code (YVTKG54L) for Aisha Bello.",
+        "category": "roster"
+      },
+      {
+        "id": "log-1788924398201-2wr",
+        "timestamp": "2026-09-09T03:26:38.201Z",
+        "eventType": "roster_imported",
+        "details": "Generated new 8-digit unique code (8Q2KJPDF) for Ethan Murphy.",
+        "category": "roster"
+      },
+      {
+        "id": "log-1788924398810-fki",
+        "timestamp": "2026-09-09T03:26:38.810Z",
+        "eventType": "roster_imported",
+        "details": "Generated new 8-digit unique code (NEE4EY9P) for Grace Osei.",
+        "category": "roster"
+      },
+      {
+        "id": "log-1788924400232-b8f",
+        "timestamp": "2026-09-09T03:26:40.232Z",
+        "eventType": "roster_imported",
+        "details": "Generated new 8-digit unique code (8M32MYZS) for Mateo Gomez.",
+        "category": "roster"
+      },
+      {
+        "id": "log-1788924400937-2jt",
+        "timestamp": "2026-09-09T03:26:40.937Z",
+        "eventType": "roster_imported",
+        "details": "Generated new 8-digit unique code (6A3Z4WD3) for Hanna Lindstrom.",
+        "category": "roster"
+      },
+      {
+        "id": "log-1788924401575-pgn",
+        "timestamp": "2026-09-09T03:26:41.575Z",
+        "eventType": "roster_imported",
+        "details": "Generated new 8-digit unique code (K4AGKZ5H) for Mateo Gomez.",
+        "category": "roster"
+      },
+      {
+        "id": "log-1788924441689-rrj",
+        "timestamp": "2026-09-09T03:27:21.689Z",
+        "eventType": "roster_imported",
+        "details": "Generated new 8-digit unique code (2X8LG8XA) for Priya Sharma.",
+        "category": "roster"
+      }
+    ],
+    "accounts": [
+      {
+        "id": "user-commissioner",
+        "username": "commissioner",
+        "fullName": "Hon. Kwesi Mensah",
+        "role": "Electoral Commissioner",
+        "passwordPin": "admin123",
+        "email": "commissioner@school-elections.edu",
+        "createdAt": "2026-09-01T08:00:00.000Z",
+        "isActive": true
+      },
+      {
+        "id": "user-president",
+        "username": "president",
+        "fullName": "Jessica Taylor (Council President)",
+        "role": "Association President",
+        "passwordPin": "pres123",
+        "email": "president@student-association.org",
+        "createdAt": "2026-09-01T08:00:00.000Z",
+        "isActive": true
+      },
+      {
+        "id": "user-alumni",
+        "username": "alumni",
+        "fullName": "Eng. David Osei (Alumni Council)",
+        "role": "Alumni Rep",
+        "passwordPin": "alumni123",
+        "email": "alumni.observer@school-foundation.org",
+        "createdAt": "2026-09-01T08:00:00.000Z",
+        "isActive": true
+      },
+      {
+        "id": "user-developer",
+        "username": "developer",
+        "fullName": "Alex Vance (Lead Systems Engineer)",
+        "role": "Developer",
+        "passwordPin": "dev123",
+        "email": "dev@school-systems.internal",
+        "createdAt": "2026-09-01T08:00:00.000Z",
+        "isActive": true
+      }
+    ]
+  },
+  "status": "Setup"
+}
