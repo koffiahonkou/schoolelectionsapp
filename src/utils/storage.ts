@@ -100,91 +100,46 @@ function openDB(): Promise<IDBDatabase> {
 /**
  * Load election data from IndexedDB with localStorage fallback
  */
+// Add this at the very top of storage.ts
+import { supabase } from '../lib/supabase'; // Check your exact path to your Supabase client!
+
+// REPLACE YOUR OLD LOAD FUNCTION WITH THIS
 export async function loadElectionData(): Promise<ElectionData> {
   try {
-    const db = await openDB();
-    return new Promise((resolve) => {
-      const tx = db.transaction(STORE_NAME, 'readonly');
-      const store = tx.objectStore(STORE_NAME);
-      const req = store.get(STORAGE_KEY);
+    const { data, error } = await supabase
+      .from('elections')
+      .select('data')
+      .eq('id', 'current') // We are using 'current' as the ID
+      .single();
 
-      req.onsuccess = () => {
-        if (req.result) {
-          resolve(normalizeElectionData(req.result as ElectionData));
-        } else {
-          // Fallback to localStorage
-          const local = localStorage.getItem(STORAGE_KEY);
-          if (local) {
-            try {
-              const parsed = JSON.parse(local);
-              resolve(normalizeElectionData(parsed));
-              return;
-            } catch {
-              // ignore
-            }
-          }
-          const defaultData = getDefaultElectionData();
-          saveElectionData(defaultData);
-          resolve(defaultData);
-        }
-      };
-
-      req.onerror = () => {
-        // Fallback to localStorage
-        const local = localStorage.getItem(STORAGE_KEY);
-        if (local) {
-          try {
-            resolve(normalizeElectionData(JSON.parse(local)));
-            return;
-          } catch {
-            // ignore
-          }
-        }
-        resolve(getDefaultElectionData());
-      };
-    });
-  } catch (err) {
-    console.warn('IndexedDB unavailable, using localStorage fallback', err);
-    const local = localStorage.getItem(STORAGE_KEY);
-    if (local) {
-      try {
-        return normalizeElectionData(JSON.parse(local));
-      } catch {
-        // ignore
-      }
+    if (error || !data) {
+      // If nothing is in Supabase yet, fall back to your default data
+      return getDefaultElectionData();
     }
-    const defaultData = getDefaultElectionData();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultData));
-    return defaultData;
+
+    return data.data as ElectionData;
+  } catch (error) {
+    console.error("Error loading from Supabase:", error);
+    return getDefaultElectionData();
   }
 }
 
-/**
- * Save election data to IndexedDB and localStorage
- */
-export async function saveElectionData(data: ElectionData): Promise<void> {
-  // Always mirror in localStorage for immediate sync
+// REPLACE YOUR OLD SAVE FUNCTION WITH THIS
+export async function saveElectionData(electionData: ElectionData): Promise<void> {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  } catch (err) {
-    console.warn('Failed to mirror election data in localStorage', err);
-  }
+    const { error } = await supabase
+      .from('elections')
+      .upsert({ 
+        id: 'current', 
+        data: electionData,
+        updated_at: new Date().toISOString()
+      });
 
-  try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, 'readwrite');
-      const store = tx.objectStore(STORE_NAME);
-      const req = store.put(data, STORAGE_KEY);
-
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
-    });
-  } catch (err) {
-    console.warn('IndexedDB save failed, relying on localStorage', err);
+    if (error) throw error;
+  } catch (error) {
+    console.error("Error saving to Supabase:", error);
   }
 }
-
 /**
  * Trigger browser download of CSV string
  */
