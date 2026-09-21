@@ -100,31 +100,31 @@ function openDB(): Promise<IDBDatabase> {
 /**
  * Load election data from IndexedDB with localStorage fallback
  */
-// Add this at the very top of storage.ts
-import { supabase } from '../lib/supabase'; // Check your exact path to your Supabase client!
+import { supabase } from '../lib/supabase'; // Adjust this path if your supabase client is elsewhere!
+import { ElectionData, ElectionStatus } from '../types';
 
-// REPLACE YOUR OLD LOAD FUNCTION WITH THIS
+// ... Keep your existing getDefaultElectionData() and other functions ...
+
 export async function loadElectionData(): Promise<ElectionData> {
   try {
     const { data, error } = await supabase
       .from('elections')
       .select('data')
-      .eq('id', 'current') // We are using 'current' as the ID
+      .eq('id', 'current')
       .single();
 
     if (error || !data) {
-      // If nothing is in Supabase yet, fall back to your default data
+      console.log("No data in Supabase yet, returning default.");
       return getDefaultElectionData();
     }
 
-    return data.data as ElectionData;
+    return normalizeElectionData(data.data as ElectionData);
   } catch (error) {
     console.error("Error loading from Supabase:", error);
     return getDefaultElectionData();
   }
 }
 
-// REPLACE YOUR OLD SAVE FUNCTION WITH THIS
 export async function saveElectionData(electionData: ElectionData): Promise<void> {
   try {
     const { error } = await supabase
@@ -139,21 +139,6 @@ export async function saveElectionData(electionData: ElectionData): Promise<void
   } catch (error) {
     console.error("Error saving to Supabase:", error);
   }
-}
-/**
- * Trigger browser download of CSV string
- */
-export function downloadCSV(filename: string, csvContent: string) {
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.setAttribute('href', url);
-  link.setAttribute('download', filename);
-  link.style.visibility = 'hidden';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
 }
 
 /**
