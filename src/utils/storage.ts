@@ -100,45 +100,105 @@ function openDB(): Promise<IDBDatabase> {
 /**
  * Load election data from IndexedDB with localStorage fallback
  */
-import { supabase } from '../lib/supabase'; // Adjust this path if your supabase client is elsewhere!
-import { ElectionData, ElectionStatus } from '../types';
-
-// ... Keep your existing getDefaultElectionData() and other functions ...
-
 export async function loadElectionData(): Promise<ElectionData> {
   try {
-    const { data, error } = await supabase
-      .from('elections')
-      .select('data')
-      .eq('id', 'current')
-      .single();
+    const db = await openDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction(STORE_NAME, 'readonly');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.get(STORAGE_KEY);
 
-    if (error || !data) {
-      console.log("No data in Supabase yet, returning default.");
-      return getDefaultElectionData();
+      req.onsuccess = () => {
+        if (req.result) {
+          resolve(normalizeElectionData(req.result as ElectionData));
+        } else {
+          // Fallback to localStorage
+          const local = localStorage.getItem(STORAGE_KEY);
+          if (local) {
+            try {
+              const parsed = JSON.parse(local);
+              resolve(normalizeElectionData(parsed));
+              return;
+            } catch {
+              // ignore
+            }
+          }
+          const defaultData = getDefaultElectionData();
+          saveElectionData(defaultData);
+          resolve(defaultData);
+        }
+      };
+
+      req.onerror = () => {
+        // Fallback to localStorage
+        const local = localStorage.getItem(STORAGE_KEY);
+        if (local) {
+          try {
+            resolve(normalizeElectionData(JSON.parse(local)));
+            return;
+          } catch {
+            // ignore
+          }
+        }
+        resolve(getDefaultElectionData());
+      };
+    });
+  } catch (err) {
+    console.warn('IndexedDB unavailable, using localStorage fallback', err);
+    const local = localStorage.getItem(STORAGE_KEY);
+    if (local) {
+      try {
+        return normalizeElectionData(JSON.parse(local));
+      } catch {
+        // ignore
+      }
     }
-
-    return normalizeElectionData(data.data as ElectionData);
-  } catch (error) {
-    console.error("Error loading from Supabase:", error);
-    return getDefaultElectionData();
+    const defaultData = getDefaultElectionData();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultData));
+    return defaultData;
   }
 }
 
-export async function saveElectionData(electionData: ElectionData): Promise<void> {
+/**
+ * Save election data to IndexedDB and localStorage
+ */
+export async function saveElectionData(data: ElectionData): Promise<void> {
+  // Always mirror in localStorage for immediate sync
   try {
-    const { error } = await supabase
-      .from('elections')
-      .upsert({ 
-        id: 'current', 
-        data: electionData,
-        updated_at: new Date().toISOString()
-      });
-
-    if (error) throw error;
-  } catch (error) {
-    console.error("Error saving to Supabase:", error);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch (err) {
+    console.warn('Failed to mirror election data in localStorage', err);
   }
+
+  try {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.put(data, STORAGE_KEY);
+
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  } catch (err) {
+    console.warn('IndexedDB save failed, relying on localStorage', err);
+  }
+}
+
+/**
+ * Trigger browser download of CSV string
+ */
+export function downloadCSV(filename: string, csvContent: string) {
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', filename);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 /**
