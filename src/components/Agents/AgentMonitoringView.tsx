@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   Candidate,
   ElectionConfig,
@@ -44,9 +44,9 @@ import {
 } from 'lucide-react';
 import { ElectionClock } from '../Common/ElectionClock';
 import {
-  subscribeToAnonymousVotes,
-  subscribeToVoterTokens,
   subscribeToAgentMonitoring,
+  fetchVoterTokensOnce,
+  fetchAnonymousVotesOnce,
   saveAnonymousVoteToFirestore,
   syncVoterRosterToFirestoreTokens,
   registerOrPingAgent,
@@ -145,74 +145,86 @@ export const AgentMonitoringView: React.FC<AgentMonitoringViewProps> = ({
   // Track initial load count to avoid noisy toasts on first load
   const isFirstLoad = useRef(true);
 
-  // 1. Subscribe to real-time Firestore collections: votes, voter_tokens, agent_monitoring
+  // Helper to load on-demand snapshots without consuming continuous realtime read quotas
+  const refreshFirestoreData = useCallback(async () => {
+    try {
+      const [votes, tokens] = await Promise.all([
+        fetchAnonymousVotesOnce(),
+        fetchVoterTokensOnce(),
+      ]);
+      setFirestoreVotes(votes);
+      setFirestoreTokens(tokens);
+      setIsStreamActive(true);
+      const timeStr = new Date().toLocaleTimeString();
+      setLastLiveEvent({
+        time: timeStr,
+        text: `Refreshed election data (${votes.length} votes, ${tokens.length} tokens)`,
+      });
+    } catch (err) {
+      console.warn('Failed to fetch on-demand Firestore data:', err);
+      setIsStreamActive(false);
+    }
+  }, []);
+
+  // 1. Agent Monitor & Data Management:
+  // - Agent Monitoring listener ONLY runs here inside AgentMonitoringView, and unsubscribes on unmount.
+  // - Voter Tokens & Votes are fetched on mount (and polled periodically every 45s) instead of global snapshot listeners.
   useEffect(() => {
+    let isMounted = true;
     setIsStreamActive(true);
 
-    const unsubscribeVotes = subscribeToAnonymousVotes(
-      (votes) => {
-        setFirestoreVotes(votes);
-        setIsStreamActive(true);
-        const timeStr = new Date().toLocaleTimeString();
-        setLastLiveEvent({
-          time: timeStr,
-          text: `Live anonymous vote snapshot received (${votes.length} ballots in Firestore)`,
-        });
+    // Initial fetch on mount for votes and voter tokens (saves free tier reads!)
+    refreshFirestoreData().then(() => {
+      if (isMounted) {
+        setEventHistory((prev) => [
+          {
+            id: 'evt-init',
+            time: new Date().toLocaleTimeString(),
+            type: 'system',
+            message: `Connected to Firestore (${FIREBASE_PROJECT_ID}). Agent Monitor active.`,
+          },
+          ...prev,
+        ]);
+      }
+    });
 
-        if (!isFirstLoad.current) {
-          setEventHistory((prev) => [
-            {
-              id: 'evt-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
-              time: timeStr,
-              type: 'vote',
-              message: `Firestore Real-time Listener: Anonymous ballot committed. Total live ballots: ${votes.length}`,
-            },
-            ...prev.slice(0, 24),
-          ]);
-        } else {
-          isFirstLoad.current = false;
-          setEventHistory((prev) => [
-            {
-              id: 'evt-init',
-              time: timeStr,
-              type: 'system',
-              message: `Connected to Firestore (${FIREBASE_PROJECT_ID}). Real-time listener active.`,
-            },
-          ]);
-        }
+    // Subscribe to agent monitoring ONLY while AgentMonitoringView is mounted
+    const unsubscribeAgents = subscribeToAgentMonitoring(
+      (agents) => {
+        if (!isMounted) return;
+        setLiveAgents(agents);
       },
       (err) => {
-        console.warn('Firestore votes listener error:', err);
-        setIsStreamActive(false);
+        if (!isMounted) return;
+        console.warn('Firestore agent monitoring listener error:', err);
       }
     );
 
-    const unsubscribeTokens = subscribeToVoterTokens(
-      (tokens) => {
-        setFirestoreTokens(tokens);
-      },
-      (err) => console.warn('Firestore voter tokens listener error:', err)
-    );
+    // Poll anonymous votes every 45 seconds to stay updated without draining Spark Plan quotas
+    const votesPollingInterval = setInterval(() => {
+      if (document.hidden) return;
+      fetchAnonymousVotesOnce().then((votes) => {
+        if (isMounted && votes.length > 0) {
+          setFirestoreVotes(votes);
+        }
+      });
+    }, 45000);
 
-    const unsubscribeAgents = subscribeToAgentMonitoring(
-      (agents) => {
-        setLiveAgents(agents);
-      },
-      (err) => console.warn('Firestore agent monitoring listener error:', err)
-    );
-
-    // Minor latency heartbeat simulation
+    // Minor latency heartbeat indicator
     const latencyInterval = setInterval(() => {
-      setStreamLatency(Math.floor(12 + Math.random() * 16));
+      if (isMounted) {
+        setStreamLatency(Math.floor(12 + Math.random() * 16));
+      }
     }, 4000);
 
+    // Cleanup: Guarantee all listeners and intervals are safely unsubscribed on unmount
     return () => {
-      unsubscribeVotes();
-      unsubscribeTokens();
+      isMounted = false;
       unsubscribeAgents();
+      clearInterval(votesPollingInterval);
       clearInterval(latencyInterval);
     };
-  }, []);
+  }, [refreshFirestoreData]);
 
   // Merge Firestore ballots with props ballots (prefer Firestore if available, otherwise deduplicate by id)
   const activeBallots = useMemo(() => {
@@ -232,12 +244,11 @@ export const AgentMonitoringView: React.FC<AgentMonitoringViewProps> = ({
     return calculateElectionTallies(positions, candidates, activeBallots, voters, false);
   }, [positions, candidates, activeBallots, voters]);
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setIsRefreshing(true);
-    setTimeout(() => {
-      setLastRefreshedAt(new Date().toLocaleTimeString());
-      setIsRefreshing(false);
-    }, 300);
+    await refreshFirestoreData();
+    setLastRefreshedAt(new Date().toLocaleTimeString());
+    setIsRefreshing(false);
   };
 
   // One-click sync of existing ballots to Firestore

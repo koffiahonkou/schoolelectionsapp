@@ -51,9 +51,8 @@ import {
   saveElectionStateToFirestore,
   getElectionMetadataFromFirestore,
   subscribeToElectionMetadata,
-  subscribeToAnonymousVotes,
-  subscribeToVoterTokens,
 } from './lib/firebaseVoting';
+import { fetchWithBackoff, postJsonWithBackoff } from './utils/apiRetry';
 
 const ACTIVE_VOTER_SESSION_KEY = 'school_election_active_voter_session';
 
@@ -287,79 +286,63 @@ export default function App() {
       }
     });
 
-    // Real-time Firestore anonymous votes listener:
-    // Synchronizes anonymous ballots cast from any device in real-time.
-    const unsubscribeVotes = subscribeToAnonymousVotes((liveBallots) => {
-      if (!isMounted) return;
-      setData((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          ballots: liveBallots,
-        };
-      });
-    });
+    // 2. Periodic sync with backoff for server endpoints
+    // If /api/election returns 404/405 or fails, it exponentially backs off instead of flooding every 3 seconds.
+    let isPolling = false;
+    let pollIntervalMs = 15000;
+    let pollTimer: any = null;
 
-    // Real-time Firestore voter tokens listener:
-    // Synchronizes the hasVoted status for students across all devices.
-    const unsubscribeTokens = subscribeToVoterTokens((tokens) => {
-      if (!isMounted) return;
-      setData((prev) => {
-        if (!prev) return prev;
-        const votedMap = new Map<string, string | null>();
-        tokens.forEach((t) => {
-          if (t.hasVoted || t.status === 'used') {
-            votedMap.set(t.voterId.toUpperCase(), t.votedAt || new Date().toISOString());
-          }
-        });
-        if (votedMap.size === 0) return prev;
-        let changed = false;
-        const updatedVoters = prev.voters.map((v) => {
-          const votedAt = votedMap.get(v.voterId.toUpperCase());
-          if (votedAt && !v.hasVoted) {
-            changed = true;
-            return { ...v, hasVoted: true, votedAt };
-          }
-          return v;
-        });
-        if (!changed) return prev;
-        return { ...prev, voters: updatedVoters };
-      });
-    });
-
-    // Periodic live sync every 3s for server endpoints (if online Express backend active)
-    const syncInterval = setInterval(async () => {
-      if (document.hidden) return;
+    const runPoll = async () => {
+      if (!isMounted || document.hidden || isPolling) return;
+      isPolling = true;
       try {
-        const res = await fetch('/api/election');
-        const contentType = res.headers.get('content-type');
-        if (res.ok && contentType && contentType.includes('application/json')) {
-          const json = await res.json();
-          if (json.success && json.data && isMounted) {
-            setData((prev) => {
-              if (!prev) return json.data;
-              return {
-                ...json.data,
-                config: json.data.config || prev.config,
-              };
-            });
-            if (json.status) {
-              setStatus(json.status);
-              saveStoredElectionStatus(json.status);
+        const res = await fetchWithBackoff(
+          '/api/election',
+          { method: 'GET', headers: { Accept: 'application/json' } },
+          { maxRetries: 1, initialDelayMs: 2000 }
+        );
+
+        if (res.status === 404 || res.status === 405) {
+          // Endpoint not deployed or method disabled on current server.
+          // Back off to 60s to prevent spamming browser console!
+          pollIntervalMs = 60000;
+        } else if (res.ok) {
+          pollIntervalMs = 15000; // Reset normal interval
+          const contentType = res.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const json = await res.json();
+            if (json.success && json.data && isMounted) {
+              setData((prev) => {
+                if (!prev) return json.data;
+                return {
+                  ...json.data,
+                  config: json.data.config || prev.config,
+                };
+              });
+              if (json.status) {
+                setStatus(json.status);
+                saveStoredElectionStatus(json.status);
+              }
             }
           }
         }
-      } catch {
-        // silent catch on network hiccups
+      } catch (pollErr) {
+        // Increase backoff delay on network failure
+        pollIntervalMs = Math.min(pollIntervalMs * 1.5, 60000);
+      } finally {
+        isPolling = false;
+        if (isMounted) {
+          pollTimer = setTimeout(runPoll, pollIntervalMs);
+        }
       }
-    }, 3000);
+    };
+
+    pollTimer = setTimeout(runPoll, 5000);
 
     return () => {
       isMounted = false;
-      clearInterval(syncInterval);
+      if (pollTimer) clearTimeout(pollTimer);
       unsubscribeMeta();
-      unsubscribeVotes();
-      unsubscribeTokens();
     };
   }, []);
 
@@ -408,11 +391,9 @@ export default function App() {
       ).catch((err) => console.warn('[Firebase] Firestore election state sync warning:', err));
 
       // 2. Sync state update to server so all concurrent clients on Node dev/server receive updates
-      fetch('/api/election/update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data: updated }),
-      }).catch((err) => console.warn('Server sync error on election update:', err));
+      postJsonWithBackoff('/api/election/update', { data: updated }).catch((err) =>
+        console.warn('Server sync error on election update:', err)
+      );
 
       return updated;
     });
@@ -442,21 +423,28 @@ export default function App() {
         metadata: extra?.metadata,
       };
 
-      // 1. Send to server to calculate canonical SHA-256 hash and persist to disk
-      fetch('/api/audit/log', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-        .then((res) => res.json())
-        .then((resData) => {
-          if (resData.success && resData.entry) {
+      // 1. Send to server using backoff protection to calculate canonical SHA-256 hash and persist to disk
+      postJsonWithBackoff('/api/audit/log', payload)
+        .then((res) => {
+          if (res.success && res.data?.entry) {
             setData((prev) => {
               if (!prev) return prev;
-              if (prev.auditLogs.some((l) => l.id === resData.entry.id)) return prev;
+              if (prev.auditLogs.some((l) => l.id === res.data.entry.id)) return prev;
               const updated = {
                 ...prev,
-                auditLogs: [...prev.auditLogs, resData.entry],
+                auditLogs: [...prev.auditLogs, res.data.entry],
+              };
+              saveElectionData(updated).catch(() => {});
+              return updated;
+            });
+          } else {
+            // Local cryptographic chain fallback if server endpoint unavailable or 404/405
+            setData((prev) => {
+              if (!prev) return prev;
+              const entry = createChainedAuditEntry(prev.auditLogs, payload);
+              const updated = {
+                ...prev,
+                auditLogs: [...prev.auditLogs, entry],
               };
               saveElectionData(updated).catch(() => {});
               return updated;
@@ -491,12 +479,8 @@ export default function App() {
       currentUser ? currentUser.fullName || currentUser.username : 'Electoral Commission Admin'
     ).catch((err) => console.warn('[Firebase] Failed to persist election status to Firestore:', err));
 
-    // Also sync to Express backend (if available)
-    fetch('/api/election/update', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: newStatus }),
-    }).catch(() => {});
+    // Also sync to backend (if available) with backoff protection
+    postJsonWithBackoff('/api/election/update', { status: newStatus }).catch(() => {});
 
     let eventType: AuditLogEntry['eventType'] = 'voting_opened';
     let details = `Election status shifted to ${newStatus}.`;

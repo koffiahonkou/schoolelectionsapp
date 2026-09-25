@@ -22,6 +22,7 @@ import {
   ScanLine,
   CheckCircle2,
   BarChart3,
+  Lock,
 } from 'lucide-react';
 
 interface VoterLoginProps {
@@ -276,6 +277,55 @@ export const VoterLogin: React.FC<VoterLoginProps> = ({
                 <X className="w-4 h-4" />
               </button>
             )}
+          </div>
+        )}
+
+        {/* Polls Not Open Banner (Setup or Closed) */}
+        {status === 'Setup' && !isPractice && (
+          <div
+            id="polls-setup-notice-banner"
+            className="mb-6 p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs"
+          >
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-xl bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-200 shrink-0 mt-0.5">
+                <Lock className="w-4 h-4" />
+              </div>
+              <div className="text-xs leading-relaxed">
+                <span className="font-extrabold text-amber-950 dark:text-white block text-xs">
+                  Voting Has Not Begun (Setup Mode)
+                </span>
+                <p className="text-amber-800 dark:text-amber-300 mt-0.5">
+                  The Electoral Commission is in <strong>Setup Mode</strong>. Ballots unlock when polls are officially opened.
+                </p>
+              </div>
+            </div>
+            <button
+              id="banner-staff-open-polls-btn"
+              type="button"
+              onClick={onSwitchToAdmin}
+              className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shrink-0 cursor-pointer shadow-xs transition-colors self-end sm:self-auto"
+            >
+              Open Polls / Staff Login
+            </button>
+          </div>
+        )}
+
+        {status === 'Closed' && !isPractice && (
+          <div
+            id="polls-closed-notice-banner"
+            className="mb-6 p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800 text-amber-950 dark:text-amber-200 flex items-start gap-3 shadow-xs"
+          >
+            <div className="p-2 rounded-xl bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-200 shrink-0 mt-0.5">
+              <Lock className="w-4 h-4" />
+            </div>
+            <div className="text-xs leading-relaxed">
+              <span className="font-extrabold text-amber-950 dark:text-amber-100 block text-xs">
+                Polls Are Currently Closed
+              </span>
+              <p className="text-amber-900/90 dark:text-amber-200/90 mt-0.5">
+                Voting has concluded for this election. Certified official results will be made viewable once published by the Electoral Commission.
+              </p>
+            </div>
           </div>
         )}
 

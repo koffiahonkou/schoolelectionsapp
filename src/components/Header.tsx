@@ -22,10 +22,12 @@ import {
   Sun,
   Moon,
   History,
+  RotateCw,
 } from 'lucide-react';
 import { sounds } from '../utils/audio';
 import { ElectionClock } from './Common/ElectionClock';
 import { SchoolLogo } from './Common/SchoolLogo';
+import { forceClearAppCacheAndReload } from '../utils/version';
 
 interface HeaderProps {
   config: ElectionConfig;
@@ -186,6 +188,18 @@ export const Header: React.FC<HeaderProps> = ({
                 aria-label="Toggle Kiosk Fullscreen"
               >
                 {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+              </button>
+
+              {/* Force Refresh / Sync Station for Mobile */}
+              <button
+                id="header-refresh-station-mobile-btn"
+                type="button"
+                onClick={() => forceClearAppCacheAndReload()}
+                title="Refresh Station to latest version (clears browser cache)"
+                className="p-2 text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                aria-label="Refresh Station"
+              >
+                <RotateCw className="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -431,6 +445,17 @@ export const Header: React.FC<HeaderProps> = ({
                 aria-label="Toggle Kiosk Fullscreen"
               >
                 {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+              </button>
+
+              {/* Force Refresh / Sync Latest Build Button */}
+              <button
+                id="header-refresh-station-btn"
+                onClick={() => forceClearAppCacheAndReload()}
+                title="Refresh Station to latest version (clears transient browser cache)"
+                className="p-2 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                aria-label="Refresh Station"
+              >
+                <RotateCw className="w-4 h-4" />
               </button>
             </div>
           </div>

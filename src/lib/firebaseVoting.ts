@@ -148,6 +148,49 @@ export async function syncVoterRosterToFirestoreTokens(voters: Voter[]): Promise
 }
 
 /**
+ * Fetches the voter tokens once on demand using standard getDocs (to save read quota).
+ */
+export async function fetchVoterTokensOnce(): Promise<VoterTokenRecord[]> {
+  try {
+    const tokensQuery = query(collection(db, 'voter_tokens'));
+    const snapshot = await getDocs(tokensQuery);
+    const tokens: VoterTokenRecord[] = [];
+    snapshot.forEach((docSnap) => {
+      tokens.push(docSnap.data() as VoterTokenRecord);
+    });
+    return tokens;
+  } catch (error) {
+    console.error('[Firebase] Failed to fetch voter tokens on-demand:', error);
+    return [];
+  }
+}
+
+/**
+ * Fetches anonymous votes once on demand using standard getDocs.
+ */
+export async function fetchAnonymousVotesOnce(): Promise<Ballot[]> {
+  try {
+    const votesQuery = query(collection(db, 'votes'), orderBy('submittedAt', 'asc'));
+    const snapshot = await getDocs(votesQuery);
+    const ballots: Ballot[] = [];
+    snapshot.forEach((docSnap) => {
+      const data = docSnap.data();
+      ballots.push({
+        id: data.id || docSnap.id,
+        choices: data.choices || {},
+        submittedAt: data.submittedAt || new Date().toISOString(),
+        isPractice: !!data.isPractice,
+        evidenceHash: data.evidenceHash || undefined,
+      });
+    });
+    return ballots;
+  } catch (error) {
+    console.error('[Firebase] Failed to fetch votes on-demand:', error);
+    return [];
+  }
+}
+
+/**
  * Real-time listener on the Firestore 'votes' collection.
  * Triggers callback immediately on subscription and whenever a new anonymous vote is deposited.
  */
