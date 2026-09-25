@@ -347,6 +347,17 @@ async function startServer() {
 
   app.use(express.json({ limit: '10mb' }));
 
+  // Global CORS and Preflight handler for /api routes
+  app.use('/api', (req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-RateLimit-Limit');
+    if (req.method === 'OPTIONS') {
+      return res.status(204).end();
+    }
+    next();
+  });
+
   // Rate limiters
   const voteRateLimiter = createRateLimiter({
     routeKey: 'POST /api/vote',
@@ -476,6 +487,15 @@ async function startServer() {
     res.json({ success: true, entry: auditEntry });
   });
 
+  // GET probe for /api/audit/log to prevent 405 Method Not Allowed
+  app.get('/api/audit/log', (req, res) => {
+    res.json({
+      success: true,
+      message: 'Audit log endpoint active. Send POST requests to append audit entries.',
+      allowedMethods: ['POST', 'GET', 'OPTIONS'],
+    });
+  });
+
   // Verify Audit Trail Cryptographic Chain of Custody
   app.get('/api/audit/verify', (req, res) => {
     const logs = electionData.auditLogs || [];
@@ -590,6 +610,22 @@ async function startServer() {
       data: electionData,
       status: electionStatus,
     });
+  });
+
+  // POST/PUT fallback for /api/election to prevent 405 Method Not Allowed
+  app.all('/api/election', (req, res, next) => {
+    if (req.method === 'POST' || req.method === 'PUT') {
+      const { data: updatedData, status: updatedStatus } = req.body || {};
+      if (updatedData) electionData = updatedData;
+      if (updatedStatus) electionStatus = updatedStatus;
+      saveElectionToDisk();
+      return res.json({
+        success: true,
+        data: electionData,
+        status: electionStatus,
+      });
+    }
+    next();
   });
 
   // POST concurrent-safe vote submission with Rate Limiting and Captcha Protection
@@ -812,9 +848,9 @@ async function startServer() {
     }
   });
 
-  // POST update election state (admin changes) with Rate Limiter
-  app.post('/api/election/update', adminRateLimiter, (req, res) => {
-    const { data: updatedData, status: updatedStatus, actor, actorRole, actionDescription } = req.body;
+  // Handler for updating election state (supports both POST and PUT)
+  const handleElectionUpdate = (req: express.Request, res: express.Response) => {
+    const { data: updatedData, status: updatedStatus, actor, actorRole, actionDescription } = req.body || {};
     const clientIp = getClientIp(req);
 
     if (updatedData) {
@@ -840,6 +876,17 @@ async function startServer() {
       data: electionData,
       status: electionStatus,
       clientIp,
+    });
+  };
+
+  // POST and PUT update election state (admin changes) with Rate Limiter
+  app.post('/api/election/update', adminRateLimiter, handleElectionUpdate);
+  app.put('/api/election/update', adminRateLimiter, handleElectionUpdate);
+  app.get('/api/election/update', (req, res) => {
+    res.json({
+      success: true,
+      message: 'Election update endpoint active. Accepts POST or PUT requests.',
+      status: electionStatus,
     });
   });
 

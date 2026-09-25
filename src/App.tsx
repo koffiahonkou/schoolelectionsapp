@@ -203,7 +203,11 @@ export default function App() {
       // 2. Fetch from online Express server (if running in full-stack Node container)
       if (!resolvedData && isMounted) {
         try {
-          const response = await fetch('/api/election');
+          const response = await fetchWithBackoff(
+            '/api/election',
+            { method: 'GET', headers: { Accept: 'application/json' } },
+            { maxRetries: 1 }
+          );
           const contentType = response.headers.get('content-type');
           if (response.ok && contentType && contentType.includes('application/json')) {
             const json = await response.json();
