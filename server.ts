@@ -915,6 +915,27 @@ async function startServer() {
     });
   });
 
+  // Direct ZIP download endpoint for exporting the complete election codebase
+  app.get('/the-ballot-box.zip', (req, res) => {
+    const zipPath = path.join(process.cwd(), 'public', 'the-ballot-box.zip');
+    if (fs.existsSync(zipPath)) {
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', 'attachment; filename="the-ballot-box.zip"');
+      return res.sendFile(zipPath);
+    }
+    res.status(404).send('ZIP package not found');
+  });
+
+  app.get('/api/download-zip', (req, res) => {
+    const zipPath = path.join(process.cwd(), 'public', 'the-ballot-box.zip');
+    if (fs.existsSync(zipPath)) {
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', 'attachment; filename="the-ballot-box.zip"');
+      return res.sendFile(zipPath);
+    }
+    res.status(404).json({ success: false, error: 'ZIP file not found' });
+  });
+
   // Mount Vite or static file serving
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({

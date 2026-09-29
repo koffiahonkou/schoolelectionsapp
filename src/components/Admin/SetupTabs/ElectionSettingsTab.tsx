@@ -866,6 +866,15 @@ export const ElectionSettingsTab: React.FC<ElectionSettingsTabProps> = ({
               <Download className="w-3 h-3" />
               <span>{hasExportedBackup ? 'Re-export Backup JSON' : 'Export Backup JSON Now'}</span>
             </button>
+            <a
+              href="/the-ballot-box.zip"
+              download="the-ballot-box.zip"
+              className="mt-2 w-full py-1.5 px-3 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-400/40 text-indigo-200 font-bold text-2xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer text-center"
+              title="Download entire election app source code as a ZIP file"
+            >
+              <Download className="w-3 h-3 text-indigo-400" />
+              <span>Download Full App Source (.ZIP)</span>
+            </a>
           </div>
         </div>
 
