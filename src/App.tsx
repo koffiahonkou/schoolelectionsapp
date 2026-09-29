@@ -27,6 +27,7 @@ import {
   loadStoredElectionStatus,
 } from './utils/storage';
 import { createChainedAuditEntry } from './utils/cryptoAudit';
+import { DEFAULT_USER_ACCOUNTS } from './utils/defaultData';
 import { sounds } from './utils/audio';
 import { Header } from './components/Header';
 import { PracticeBanner } from './components/Common/PracticeBanner';
@@ -318,9 +319,27 @@ export default function App() {
             if (json.success && json.data && isMounted) {
               setData((prev) => {
                 if (!prev) return json.data;
+
+                // Never overwrite a live election with an empty or placeholder schema
+                const prevHasLiveSetup = (prev.positions && prev.positions.length > 0) ||
+                  (prev.config && prev.config.title && prev.config.title !== '2026 Student Representative Council Elections');
+                const apiHasSetup = json.data.positions && json.data.positions.length > 0;
+
+                if (prevHasLiveSetup && !apiHasSetup) {
+                  return prev;
+                }
+
                 return {
+                  ...prev,
                   ...json.data,
-                  config: json.data.config || prev.config,
+                  config: {
+                    ...prev.config,
+                    ...(json.data.config || {}),
+                  },
+                  positions: (json.data.positions && json.data.positions.length > 0) ? json.data.positions : prev.positions,
+                  candidates: (json.data.candidates && json.data.candidates.length > 0) ? json.data.candidates : prev.candidates,
+                  voters: (json.data.voters && json.data.voters.length > 0) ? json.data.voters : prev.voters,
+                  accounts: (json.data.accounts && json.data.accounts.length > 0) ? json.data.accounts : (prev.accounts && prev.accounts.length > 0 ? prev.accounts : DEFAULT_USER_ACCOUNTS),
                 };
               });
               if (json.status) {

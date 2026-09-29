@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { UserAccount } from '../../types';
+import { DEFAULT_USER_ACCOUNTS } from '../../utils/defaultData';
 import {
   Lock,
   ShieldCheck,
@@ -32,8 +33,12 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
   onSuccess,
   onCancel,
 }) => {
+  const activeAccounts = useMemo(() => {
+    return Array.isArray(accounts) && accounts.length > 0 ? accounts : DEFAULT_USER_ACCOUNTS;
+  }, [accounts]);
+
   const [selectedAccountId, setSelectedAccountId] = useState<string>(
-    accounts[0]?.id || ''
+    activeAccounts[0]?.id || ''
   );
   const [pinInput, setPinInput] = useState('');
   const [authMode, setAuthMode] = useState<'account' | 'pin'>('account');
@@ -47,12 +52,12 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
   });
   const [showBackupInput, setShowBackupInput] = useState(false);
 
-  // Sync selectedAccountId if accounts change
+  // Sync selectedAccountId if activeAccounts change
   useEffect(() => {
-    if (accounts.length > 0 && !selectedAccountId) {
-      setSelectedAccountId(accounts[0].id);
+    if (activeAccounts.length > 0 && (!selectedAccountId || !activeAccounts.some((a) => a.id === selectedAccountId))) {
+      setSelectedAccountId(activeAccounts[0].id);
     }
-  }, [accounts, selectedAccountId]);
+  }, [activeAccounts, selectedAccountId]);
 
   // Active TOTP ticker for 2FA step
   useEffect(() => {
@@ -70,7 +75,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
 
   if (!isOpen) return null;
 
-  const currentSelectedAccount = accounts.find((a) => a.id === selectedAccountId);
+  const currentSelectedAccount = activeAccounts.find((a) => a.id === selectedAccountId) || activeAccounts[0];
 
   const resetModalState = () => {
     setPinInput('');
@@ -251,7 +256,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
                       }}
                       className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-sm font-bold text-slate-900 dark:text-white focus:border-slate-900 dark:focus:border-indigo-500 focus:ring-2 focus:ring-slate-900/10 outline-hidden bg-white dark:bg-slate-800"
                     >
-                      {accounts.map((acc) => (
+                      {activeAccounts.map((acc) => (
                         <option key={acc.id} value={acc.id}>
                           {acc.fullName} ({acc.role})
                         </option>

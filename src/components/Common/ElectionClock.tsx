@@ -23,18 +23,33 @@ interface TimeRemaining {
 
 function computeTimeRemaining(endDateStr: string, closingTimeStr: string): TimeRemaining {
   // Normalize closing time to HH:MM:SS
-  const cleanTime = closingTimeStr.trim() || '18:00';
+  const cleanTime = (closingTimeStr || '20:00').trim();
   const timeWithSeconds = cleanTime.length === 5 ? `${cleanTime}:00` : cleanTime;
-  const isoString = `${endDateStr}T${timeWithSeconds}`;
 
-  let targetDate = new Date(isoString);
-  if (isNaN(targetDate.getTime())) {
-    // Fallback: use today with closing time
-    const today = new Date().toISOString().split('T')[0];
-    targetDate = new Date(`${today}T${timeWithSeconds}`);
-    if (isNaN(targetDate.getTime())) {
-      targetDate = new Date(Date.now() + 6 * 3600 * 1000); // 6 hours from now
+  let targetDate: Date;
+
+  let normalizedDateStr = (endDateStr || '').trim();
+  if (normalizedDateStr.includes('T')) {
+    normalizedDateStr = normalizedDateStr.split('T')[0];
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalizedDateStr)) {
+    targetDate = new Date(`${normalizedDateStr}T${timeWithSeconds}`);
+  } else {
+    const parsedBase = new Date(normalizedDateStr);
+    if (!isNaN(parsedBase.getTime())) {
+      const yyyy = parsedBase.getFullYear();
+      const mm = String(parsedBase.getMonth() + 1).padStart(2, '0');
+      const dd = String(parsedBase.getDate()).padStart(2, '0');
+      targetDate = new Date(`${yyyy}-${mm}-${dd}T${timeWithSeconds}`);
+    } else {
+      const today = new Date().toISOString().split('T')[0];
+      targetDate = new Date(`${today}T${timeWithSeconds}`);
     }
+  }
+
+  if (isNaN(targetDate.getTime())) {
+    targetDate = new Date(Date.now() + 6 * 3600 * 1000); // 6 hours from now
   }
 
   const now = new Date();
@@ -119,7 +134,7 @@ export const ElectionClock: React.FC<ElectionClockProps> = ({
       );
     }
 
-    if (timeRemaining.isExpired) {
+    if (timeRemaining.isExpired && status !== 'Open') {
       return (
         <div
           id="election-clock-compact"

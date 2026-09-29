@@ -1,3 +1,6 @@
+import fs from 'fs';
+import path from 'path';
+
 export default function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -9,51 +12,48 @@ export default function handler(req: any, res: any) {
   }
 
   try {
-    let defaultData: any = null;
+    let electionPayload: any = null;
+    let electionStatus = 'Open';
+
+    // 1. Load actual election configuration from data/election-data.json if packaged
     try {
-      // Dynamic require / fallback to prevent serverless bundling module failures
-      const { getDefaultElectionData } = require('../src/utils/defaultData');
-      if (typeof getDefaultElectionData === 'function') {
-        defaultData = getDefaultElectionData();
+      const dataFilePath = path.join(process.cwd(), 'data', 'election-data.json');
+      if (fs.existsSync(dataFilePath)) {
+        const fileContent = JSON.parse(fs.readFileSync(dataFilePath, 'utf8'));
+        electionPayload = fileContent.data || fileContent;
+        if (fileContent.status) {
+          electionStatus = fileContent.status;
+        }
       }
     } catch {
-      // Self-contained fallback schema
-      defaultData = {
-        config: {
-          id: 'config-1',
-          title: '2026 Student Representative Council Elections',
-          schoolName: 'Accra Academy Senior High School',
-          logoUrl: '',
-          date: '2026-09-28',
-          requirePin: true,
-          adminPin: 'admin123',
-          hideTalliesDuringVoting: true,
-          allowPracticeBallot: true,
-          endDate: '2026-09-28',
-          showClockToVoters: true,
-          enableCaptcha: true,
-        },
-        positions: [],
-        candidates: [],
-        voters: [],
-        ballots: [],
-        auditLogs: [],
-      };
+      // ignore
+    }
+
+    // 2. Fallback to src/utils/defaultData
+    if (!electionPayload) {
+      try {
+        const { getDefaultElectionData } = require('../src/utils/defaultData');
+        if (typeof getDefaultElectionData === 'function') {
+          electionPayload = getDefaultElectionData();
+        }
+      } catch {
+        // ignore
+      }
     }
 
     if (req.method === 'POST') {
       return res.status(200).json({
         success: true,
         message: 'Election state acknowledged',
-        data: req.body?.data || defaultData,
-        status: req.body?.status || 'Open',
+        data: req.body?.data || electionPayload,
+        status: req.body?.status || electionStatus,
       });
     }
 
     return res.status(200).json({
       success: true,
-      data: defaultData,
-      status: 'Open',
+      data: electionPayload,
+      status: electionStatus,
       timestamp: new Date().toISOString(),
     });
   } catch (err: any) {
