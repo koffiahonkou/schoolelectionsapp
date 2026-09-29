@@ -665,80 +665,120 @@ export default function App() {
             console.warn('[Firebase] Firestore token sync warning:', err)
           );
         }
-      }
+      } else {
+        // Online serverless confirmation (e.g. Vercel /api/vote)
+        const newBallot: Ballot = {
+          id: resData.ballotId || ('bal-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7)),
+          submittedAt: resData.timestamp || new Date().toISOString(),
+          isPractice,
+          choices: { ...pendingChoices },
+        };
 
-      clearBallotAutosave(voterId);
-      try {
-        sessionStorage.removeItem(ACTIVE_VOTER_SESSION_KEY);
-      } catch {
-        // ignore
-      }
+        // Synchronize anonymous vote to Firestore and update voter token
+        saveAnonymousVoteToFirestore(newBallot).catch((err) =>
+          console.warn('[Firebase] Firestore vote sync warning:', err)
+        );
+        if (!isPractice && voterId) {
+          markVoterTokenUsedInFirestore(voterId).catch((err) =>
+            console.warn('[Firebase] Firestore token sync warning:', err)
+          );
+        }
 
-      sounds.playSuccess();
-      setIsSubmittingVote(false);
-      setIsReviewModalOpen(false);
-      setConfirmedVoterName(voterName);
-      setIsVoteConfirmed(true);
-      setActiveVoter(null);
-      return;
+        persistElectionData((prev) => {
+          const updatedVoters = isPractice
+            ? prev.voters
+            : prev.voters.map((v) =>
+                v.voterId.toUpperCase() === activeVoter.voterId.toUpperCase()
+                  ? { ...v, hasVoted: true, votedAt: newBallot.submittedAt }
+                  : v
+              );
+
+          const updatedBallots = [...prev.ballots, newBallot];
+
+          const auditEntry = createChainedAuditEntry(prev.auditLogs, {
+            eventType: 'ballot_submitted',
+            details: isPractice
+              ? 'Demo practice ballot cast.'
+              : `Official anonymous ballot deposited online. Total ballots: ${
+                  updatedBallots.filter((b) => !b.isPractice).length
+                }/${prev.voters.length}.`,
+            category: 'ballot',
+            actor: 'Confidential Ballot Box',
+            actorRole: 'Voter',
+            metadata: {
+              isPractice,
+              ballotId: newBallot.id,
+              totalCast: updatedBallots.filter((b) => !b.isPractice).length,
+              totalEligible: prev.voters.length,
+            },
+          });
+
+          return {
+            ...prev,
+            voters: updatedVoters,
+            ballots: updatedBallots,
+            auditLogs: [...prev.auditLogs, auditEntry],
+          };
+        });
+      }
     } catch (networkErr) {
       console.warn('Online server unreachable, processing with local fallback:', networkErr);
-    }
 
-    // Local Fallback (if server unreachable or strictly offline)
-    const newBallot: Ballot = {
-      id: 'bal-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
-      submittedAt: new Date().toISOString(),
-      isPractice,
-      choices: { ...pendingChoices },
-    };
-
-    // Synchronize anonymous vote to Firestore and update voter token
-    saveAnonymousVoteToFirestore(newBallot).catch((err) =>
-      console.warn('[Firebase] Firestore vote fallback sync warning:', err)
-    );
-    if (!isPractice && voterId) {
-      markVoterTokenUsedInFirestore(voterId).catch((err) =>
-        console.warn('[Firebase] Firestore token sync warning:', err)
-      );
-    }
-
-    persistElectionData((prev) => {
-      const updatedVoters = isPractice
-        ? prev.voters
-        : prev.voters.map((v) =>
-            v.voterId.toUpperCase() === activeVoter.voterId.toUpperCase()
-              ? { ...v, hasVoted: true, votedAt: new Date().toISOString() }
-              : v
-          );
-
-      const updatedBallots = [...prev.ballots, newBallot];
-
-      const auditEntry = createChainedAuditEntry(prev.auditLogs, {
-        eventType: 'ballot_submitted',
-        details: isPractice
-          ? 'Demo practice ballot cast.'
-          : `Official anonymous ballot deposited. Total ballots: ${
-              updatedBallots.filter((b) => !b.isPractice).length
-            }/${prev.voters.length}.`,
-        category: 'ballot',
-        actor: 'Confidential Ballot Box',
-        actorRole: 'Voter',
-        metadata: {
-          isPractice,
-          ballotId: newBallot.id,
-          totalCast: updatedBallots.filter((b) => !b.isPractice).length,
-          totalEligible: prev.voters.length,
-        },
-      });
-
-      return {
-        ...prev,
-        voters: updatedVoters,
-        ballots: updatedBallots,
-        auditLogs: [...prev.auditLogs, auditEntry],
+      // Local Fallback (if server unreachable or strictly offline)
+      const newBallot: Ballot = {
+        id: 'bal-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+        submittedAt: new Date().toISOString(),
+        isPractice,
+        choices: { ...pendingChoices },
       };
-    });
+
+      // Synchronize anonymous vote to Firestore and update voter token
+      saveAnonymousVoteToFirestore(newBallot).catch((err) =>
+        console.warn('[Firebase] Firestore vote fallback sync warning:', err)
+      );
+      if (!isPractice && voterId) {
+        markVoterTokenUsedInFirestore(voterId).catch((err) =>
+          console.warn('[Firebase] Firestore token sync warning:', err)
+        );
+      }
+
+      persistElectionData((prev) => {
+        const updatedVoters = isPractice
+          ? prev.voters
+          : prev.voters.map((v) =>
+              v.voterId.toUpperCase() === activeVoter.voterId.toUpperCase()
+                ? { ...v, hasVoted: true, votedAt: newBallot.submittedAt }
+                : v
+            );
+
+        const updatedBallots = [...prev.ballots, newBallot];
+
+        const auditEntry = createChainedAuditEntry(prev.auditLogs, {
+          eventType: 'ballot_submitted',
+          details: isPractice
+            ? 'Demo practice ballot cast.'
+            : `Official anonymous ballot deposited (offline fallback). Total ballots: ${
+                updatedBallots.filter((b) => !b.isPractice).length
+              }/${prev.voters.length}.`,
+          category: 'ballot',
+          actor: 'Confidential Ballot Box',
+          actorRole: 'Voter',
+          metadata: {
+            isPractice,
+            ballotId: newBallot.id,
+            totalCast: updatedBallots.filter((b) => !b.isPractice).length,
+            totalEligible: prev.voters.length,
+          },
+        });
+
+        return {
+          ...prev,
+          voters: updatedVoters,
+          ballots: updatedBallots,
+          auditLogs: [...prev.auditLogs, auditEntry],
+        };
+      });
+    }
 
     clearBallotAutosave(voterId);
     try {

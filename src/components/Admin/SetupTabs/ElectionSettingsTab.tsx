@@ -35,6 +35,24 @@ interface ElectionSettingsTabProps {
   onLoadDefaultDemo: () => void;
 }
 
+function toDateInputValue(val: string | undefined): string {
+  if (!val) return '';
+  const trimmed = val.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  if (trimmed.includes('T')) {
+    const isoPart = trimmed.split('T')[0];
+    if (/^\d{4}-\d{2}-\d{2}$/.test(isoPart)) return isoPart;
+  }
+  const d = new Date(trimmed);
+  if (!isNaN(d.getTime())) {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  return '';
+}
+
 export const ElectionSettingsTab: React.FC<ElectionSettingsTabProps> = ({
   config,
   status = 'Setup',
@@ -201,7 +219,7 @@ export const ElectionSettingsTab: React.FC<ElectionSettingsTabProps> = ({
               </label>
               <input
                 type="date"
-                value={formData.date}
+                value={toDateInputValue(formData.date)}
                 onChange={(e) => setFormData({ ...formData, date: e.target.value })}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-semibold text-slate-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-hidden"
               />
@@ -213,7 +231,7 @@ export const ElectionSettingsTab: React.FC<ElectionSettingsTabProps> = ({
               </label>
               <input
                 type="date"
-                value={formData.endDate || formData.date}
+                value={toDateInputValue(formData.endDate || formData.date)}
                 onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-semibold text-slate-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-hidden"
               />

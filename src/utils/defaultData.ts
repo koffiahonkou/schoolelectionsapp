@@ -231,11 +231,7 @@ export function getDefaultElectionData(): ElectionData {
 
   // Current date for default config
   const today = new Date();
-  const dateStr = today.toLocaleDateString('en-US', {
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  });
+  const dateStr = today.toISOString().split('T')[0];
 
   const config: ElectionConfig = {
     id: 'config-1',
@@ -247,7 +243,7 @@ export function getDefaultElectionData(): ElectionData {
     adminPin: 'admin123',
     hideTalliesDuringVoting: true,
     allowPracticeBallot: true,
-    endDate: new Date(Date.now() + 6 * 3600 * 1000).toISOString(),
+    endDate: dateStr,
     showClockToVoters: true,
     enableCaptcha: true,
   };

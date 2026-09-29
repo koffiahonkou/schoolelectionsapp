@@ -20,10 +20,18 @@ export default function handler(req: any, res: any) {
     const ballotId = 'bal-' + Date.now() + '-' + Math.random().toString(36).substring(2, 8);
     const submittedAt = new Date().toISOString();
 
+    const ballot = {
+      id: ballotId,
+      submittedAt,
+      isPractice: Boolean(isPractice),
+      choices,
+    };
+
     return res.status(200).json({
       success: true,
       ballotId,
       timestamp: submittedAt,
+      ballot,
       message: 'Ballot verified and ready for Firestore synchronization',
     });
   } catch (error: any) {
