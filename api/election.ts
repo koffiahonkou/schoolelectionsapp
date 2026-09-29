@@ -1,7 +1,26 @@
 import fs from 'fs';
 import path from 'path';
 
-export default function handler(req: any, res: any) {
+let firestoreDb: any = null;
+
+function getDb() {
+  if (firestoreDb) return firestoreDb;
+  try {
+    const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+    if (fs.existsSync(configPath)) {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      const { initializeApp, getApps, getApp } = require('firebase/app');
+      const { getFirestore } = require('firebase/firestore');
+      const app = getApps().length > 0 ? getApp() : initializeApp(config);
+      firestoreDb = getFirestore(app, config.firestoreDatabaseId);
+    }
+  } catch {
+    // ignore
+  }
+  return firestoreDb;
+}
+
+export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
@@ -15,21 +34,53 @@ export default function handler(req: any, res: any) {
     let electionPayload: any = null;
     let electionStatus = 'Open';
 
-    // 1. Load actual election configuration from data/election-data.json if packaged
+    // 1. Try to fetch live canonical metadata from Firestore first
     try {
-      const dataFilePath = path.join(process.cwd(), 'data', 'election-data.json');
-      if (fs.existsSync(dataFilePath)) {
-        const fileContent = JSON.parse(fs.readFileSync(dataFilePath, 'utf8'));
-        electionPayload = fileContent.data || fileContent;
-        if (fileContent.status) {
-          electionStatus = fileContent.status;
+      const db = getDb();
+      if (db) {
+        const { doc, getDoc } = require('firebase/firestore');
+        const timeoutPromise = new Promise<null>((r) => setTimeout(() => r(null), 2500));
+        const snapPromise = getDoc(doc(db, 'election_metadata', 'current'));
+        const snap = await Promise.race([snapPromise, timeoutPromise]);
+        if (snap && snap.exists && snap.exists()) {
+          const cloud = snap.data();
+          if (cloud.status) {
+            electionStatus = cloud.status;
+          }
+          if (cloud.positions || cloud.candidates || cloud.config) {
+            electionPayload = {
+              config: cloud.config,
+              positions: cloud.positions || [],
+              candidates: cloud.candidates || [],
+              voters: cloud.voters || [],
+              accounts: cloud.accounts || [],
+              ballots: [],
+              auditLogs: [],
+            };
+          }
         }
       }
     } catch {
-      // ignore
+      // fallback to disk
     }
 
-    // 2. Fallback to src/utils/defaultData
+    // 2. Fallback to local data/election-data.json if needed
+    if (!electionPayload) {
+      try {
+        const dataFilePath = path.join(process.cwd(), 'data', 'election-data.json');
+        if (fs.existsSync(dataFilePath)) {
+          const fileContent = JSON.parse(fs.readFileSync(dataFilePath, 'utf8'));
+          electionPayload = fileContent.data || fileContent;
+          if (fileContent.status && !electionStatus) {
+            electionStatus = fileContent.status;
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    // 3. Fallback to defaultData
     if (!electionPayload) {
       try {
         const { getDefaultElectionData } = require('../src/utils/defaultData');
@@ -46,14 +97,14 @@ export default function handler(req: any, res: any) {
         success: true,
         message: 'Election state acknowledged',
         data: req.body?.data || electionPayload,
-        status: req.body?.status || electionStatus,
+        status: req.body?.status || electionStatus || 'Open',
       });
     }
 
     return res.status(200).json({
       success: true,
       data: electionPayload,
-      status: electionStatus,
+      status: electionStatus || 'Open',
       timestamp: new Date().toISOString(),
     });
   } catch (err: any) {

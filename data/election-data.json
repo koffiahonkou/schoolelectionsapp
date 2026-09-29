@@ -254,6 +254,39 @@
         "timestamp": "2026-09-29T04:33:00.931Z",
         "previousHash": "b1417f26d7e1fe39ec539e77344651b051c1f1411312ba922d7c28971735373a",
         "evidenceHash": "b4ade018e9f14629bf82b0916eef1c8821c9896da51b97de31d6689e4faa55d1"
+      },
+      {
+        "eventType": "voter_login",
+        "details": "Student voter authenticated at booth: Samantha Reed (ID: STU102). Identity verified.",
+        "category": "ballot",
+        "actor": "Samantha Reed (STU102)",
+        "actorRole": "Voter",
+        "ipAddress": "41.204.44.243",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+        "metadata": {
+          "studentId": "STU102",
+          "isPractice": false
+        },
+        "id": "aud-1790656758596-oy18q",
+        "timestamp": "2026-09-29T04:39:18.596Z",
+        "previousHash": "b4ade018e9f14629bf82b0916eef1c8821c9896da51b97de31d6689e4faa55d1",
+        "evidenceHash": "6f9c1f0ebfc50cb92d9a143bb2076adfab230ad699a11e32b319290d12dc4a9b"
+      },
+      {
+        "eventType": "voter_session_timeout",
+        "details": "Voting booth session automatically closed due to 3-minute idle timeout on ballot for student Samantha Reed (STU102).",
+        "category": "security",
+        "actor": "Samantha Reed (STU102)",
+        "actorRole": "Voter",
+        "ipAddress": "41.204.44.243",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+        "metadata": {
+          "studentId": "STU102"
+        },
+        "id": "aud-1790657033994-q8eyf",
+        "timestamp": "2026-09-29T04:43:53.994Z",
+        "previousHash": "6f9c1f0ebfc50cb92d9a143bb2076adfab230ad699a11e32b319290d12dc4a9b",
+        "evidenceHash": "35dae01d81afbffb942dd4968bcce00d3abb90a9ba651e9397bd6e65feca3b96"
       }
     ],
     "accounts": [
@@ -299,5 +332,5 @@
       }
     ]
   },
-  "status": "Setup"
+  "status": "Open"
 }

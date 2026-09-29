@@ -339,6 +339,11 @@ export default function App() {
                   return prev;
                 }
 
+                // Preserve existing voters if user has loaded or imported records
+                const currentVoters = (prev.voters && prev.voters.length > 0)
+                  ? prev.voters
+                  : (json.data.voters || []);
+
                 return {
                   ...prev,
                   ...json.data,
@@ -348,13 +353,22 @@ export default function App() {
                   },
                   positions: (json.data.positions && json.data.positions.length > 0) ? json.data.positions : prev.positions,
                   candidates: (json.data.candidates && json.data.candidates.length > 0) ? json.data.candidates : prev.candidates,
-                  voters: (json.data.voters && json.data.voters.length > 0) ? json.data.voters : prev.voters,
+                  voters: currentVoters,
                   accounts: (json.data.accounts && json.data.accounts.length > 0) ? json.data.accounts : (prev.accounts && prev.accounts.length > 0 ? prev.accounts : DEFAULT_USER_ACCOUNTS),
                 };
               });
+
+              // CRITICAL: Never let stale polling downgrade an active Open or Closed election back to 'Setup'
               if (json.status) {
-                setStatus(json.status);
-                saveStoredElectionStatus(json.status);
+                setStatus((cur) => {
+                  if (cur === json.status) return cur;
+                  // If polls are Open, Closed, or Published, do not let polling revert to Setup
+                  if (cur !== 'Setup' && json.status === 'Setup') {
+                    return cur;
+                  }
+                  saveStoredElectionStatus(json.status);
+                  return json.status;
+                });
               }
             }
           }
