@@ -49,6 +49,12 @@ export const VoterRosterTab: React.FC<VoterRosterTabProps> = ({
   onUpdateVoters,
 }) => {
   const isDeveloper = currentUser?.role === 'Developer';
+  const canManageRoster =
+    isDeveloper ||
+    currentUser?.role === 'Electoral Commissioner' ||
+    currentUser?.role === 'Association President' ||
+    !currentUser;
+
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'VOTED' | 'NOT_VOTED'>('ALL');
 
@@ -69,6 +75,18 @@ export const VoterRosterTab: React.FC<VoterRosterTabProps> = ({
 
   // Delete Voter Modal
   const [deleteConfirmVoter, setDeleteConfirmVoter] = useState<Voter | null>(null);
+
+  // Clear Roster Modal
+  const [isClearRosterModalOpen, setIsClearRosterModalOpen] = useState(false);
+
+  // Import Register Modal
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [parsedImportVoters, setParsedImportVoters] = useState<Voter[]>([]);
+  const [importMode, setImportMode] = useState<'REPLACE' | 'APPEND'>('REPLACE');
+  const [importStats, setImportStats] = useState<{ generatedPins: number; duplicatesSkipped: number }>({
+    generatedPins: 0,
+    duplicatesSkipped: 0,
+  });
 
   // Copy code feedback
   const [copiedPin, setCopiedPin] = useState<string | null>(null);
@@ -131,9 +149,9 @@ export const VoterRosterTab: React.FC<VoterRosterTabProps> = ({
     }
   };
 
-  // Open Add Single Voter form with fresh 8-digit unique PIN (Developer only)
+  // Open Add Single Voter form with fresh 8-digit unique PIN
   const handleOpenAddForm = () => {
-    if (!isDeveloper) return;
+    if (!canManageRoster) return;
     const existingPins = new Set<string>(
       voters.filter((v) => v.pin).map((v) => v.pin!.trim().toUpperCase())
     );
@@ -147,9 +165,9 @@ export const VoterRosterTab: React.FC<VoterRosterTabProps> = ({
     setIsAdding(true);
   };
 
-  // Regenerate single 8-digit unique code in manual add form (Developer only)
+  // Regenerate single 8-digit unique code in manual add form
   const handleGenerateFreshManualPin = () => {
-    if (!isDeveloper) return;
+    if (!canManageRoster) return;
     const existingPins = new Set<string>(
       voters.filter((v) => v.pin).map((v) => v.pin!.trim().toUpperCase())
     );
@@ -157,9 +175,9 @@ export const VoterRosterTab: React.FC<VoterRosterTabProps> = ({
     setManualPin(freshPin);
   };
 
-  // Regenerate 8-digit Access PIN for a specific UNVOTED voter (Developer only)
+  // Regenerate 8-digit Access PIN for a specific UNVOTED voter
   const handleRegeneratePinSingle = (voter: Voter) => {
-    if (!isDeveloper || voter.hasVoted) return; // Developer-only and unvoted
+    if (!canManageRoster || voter.hasVoted) return; // Officers only and unvoted
     const existingPins = new Set<string>(
       voters
         .filter((v) => v.id !== voter.id && v.pin)
@@ -175,9 +193,9 @@ export const VoterRosterTab: React.FC<VoterRosterTabProps> = ({
     setTimeout(() => setImportNotice(null), 4000);
   };
 
-  // Bulk generate 8-digit unique Access PINs / Security Codes at once for all voters (Developer only)
+  // Bulk generate 8-digit unique Access PINs / Security Codes at once for all voters
   const handleConfirmBulkGenerateCodes = () => {
-    if (!isDeveloper) return;
+    if (!canManageRoster) return;
     const existingPins = new Set<string>();
 
     let modifiedCount = 0;
@@ -214,10 +232,10 @@ export const VoterRosterTab: React.FC<VoterRosterTabProps> = ({
     setTimeout(() => setImportNotice(null), 5000);
   };
 
-  // Handle CSV file upload (Developer only)
+  // Handle CSV file upload (authorized Election Officers)
   const handleCSVUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!isDeveloper) {
-      setImportNotice('Importing voter records is restricted strictly to the Developer account.');
+    if (!canManageRoster) {
+      setImportNotice('Importing voter records is restricted to authorized Election Officers.');
       setTimeout(() => setImportNotice(null), 5000);
       return;
     }
@@ -233,12 +251,10 @@ export const VoterRosterTab: React.FC<VoterRosterTabProps> = ({
       if (lines.length === 0) return;
 
       const newVoters: Voter[] = [];
-      const existingIds = new Set<string>(voters.map((v) => normalizeVoterId(v.voterId)));
-      const existingPins = new Set<string>(
-        voters.filter((v) => v.pin).map((v) => v.pin!.trim().toUpperCase())
-      );
-      let duplicateCount = 0;
+      const seenIds = new Set<string>();
+      const existingPins = new Set<string>();
       let generatedPinsCount = 0;
+      let duplicateCount = 0;
 
       // Check header row
       const firstLineLower = lines[0].toLowerCase();
@@ -256,12 +272,10 @@ export const VoterRosterTab: React.FC<VoterRosterTabProps> = ({
           let rawId = parts[1] || '';
           let rawPin = parts[2] || '';
 
-          // If Student ID is missing, assign sequential STU ID
           if (!rawId) {
-            rawId = `STU${voters.length + newVoters.length + 101}`;
+            rawId = `STU${newVoters.length + 101}`;
           }
 
-          // If Access PIN is missing or blank, automatically generate an 8-digit unique code!
           if (!rawPin) {
             rawPin = generateUniqueVoterCode(existingPins);
             existingPins.add(rawPin);
@@ -271,10 +285,10 @@ export const VoterRosterTab: React.FC<VoterRosterTabProps> = ({
           }
 
           const normalizedId = normalizeVoterId(rawId);
-          if (normalizedId && !existingIds.has(normalizedId)) {
-            existingIds.add(normalizedId);
+          if (normalizedId && !seenIds.has(normalizedId)) {
+            seenIds.add(normalizedId);
             newVoters.push({
-              id: 'voter-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+              id: 'voter-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7) + '-' + i,
               fullName: name,
               voterId: normalizedId,
               pin: rawPin.toUpperCase(),
@@ -288,18 +302,68 @@ export const VoterRosterTab: React.FC<VoterRosterTabProps> = ({
       }
 
       if (newVoters.length > 0) {
-        onUpdateVoters(
-          [...voters, ...newVoters],
-          `Imported ${newVoters.length} voters from CSV (${generatedPinsCount} generated 8-digit PINs, ${duplicateCount} duplicate IDs skipped).`
-        );
-        setImportNotice(
-          `Imported ${newVoters.length} voters (${generatedPinsCount} assigned fresh 8-digit Access PINs).`
-        );
+        setParsedImportVoters(newVoters);
+        setImportStats({
+          generatedPins: generatedPinsCount,
+          duplicatesSkipped: duplicateCount,
+        });
+        // Default to REPLACE if current list is empty or no votes have been cast yet
+        setImportMode(voters.length === 0 || voters.every((v) => !v.hasVoted) ? 'REPLACE' : 'APPEND');
+        setIsImportModalOpen(true);
+      } else {
+        setImportNotice('No valid voter records found in CSV file.');
         setTimeout(() => setImportNotice(null), 5000);
       }
     };
     reader.readAsText(file);
     e.target.value = '';
+  };
+
+  const handleConfirmImport = async () => {
+    if (parsedImportVoters.length === 0) return;
+
+    let finalRoster: Voter[] = [];
+    let logMsg = '';
+
+    if (importMode === 'REPLACE') {
+      finalRoster = parsedImportVoters;
+      logMsg = `Imported official voter register: replaced entire roster with ${parsedImportVoters.length} voters (${importStats.generatedPins} generated 8-digit PINs).`;
+    } else {
+      const existingIds = new Set(voters.map((v) => normalizeVoterId(v.voterId)));
+      const filtered = parsedImportVoters.filter((v) => !existingIds.has(normalizeVoterId(v.voterId)));
+      finalRoster = [...voters, ...filtered];
+      logMsg = `Appended ${filtered.length} voters from CSV to existing roster (${importStats.generatedPins} generated 8-digit PINs).`;
+    }
+
+    onUpdateVoters(finalRoster, logMsg);
+    setImportNotice(
+      `Successfully loaded ${finalRoster.length} voters into register (${importMode === 'REPLACE' ? 'Clean Register' : 'Appended'}).`
+    );
+    setIsImportModalOpen(false);
+    setParsedImportVoters([]);
+
+    // Automatically sync voter tokens to Firestore
+    syncVoterRosterToFirestoreTokens(finalRoster).catch((err) =>
+      console.warn('[Firebase] Automatic token sync on import warning:', err)
+    );
+    setTimeout(() => setImportNotice(null), 5000);
+  };
+
+  const handleClearAllVoters = () => {
+    const votedCount = voters.filter((v) => v.hasVoted).length;
+    if (votedCount > 0) {
+      const remainingVoted = voters.filter((v) => v.hasVoted);
+      onUpdateVoters(
+        remainingVoted,
+        `Cleared unvoted records from roster. Preserved ${votedCount} voters who have already voted.`
+      );
+      setImportNotice(`Cleared unvoted records from register. ${votedCount} voted records preserved.`);
+    } else {
+      onUpdateVoters([], 'Cleared all voters from register for clean slate.');
+      setImportNotice('Voter register completely cleared. Ready for fresh import.');
+    }
+    setIsClearRosterModalOpen(false);
+    setTimeout(() => setImportNotice(null), 5000);
   };
 
   // Download Sample CSV template showcasing Student IDs and 8-digit unique Access PINs
@@ -461,29 +525,29 @@ export const VoterRosterTab: React.FC<VoterRosterTabProps> = ({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Developer Restriction Notice for non-developer staff */}
-          {!isDeveloper && (
+          {/* Restriction Notice for non-authorized staff */}
+          {!canManageRoster && (
             <span
               id="developer-roster-restricted-badge"
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60"
-              title="Adding and importing voters and generating 8-digit PINs is restricted strictly to Developer accounts"
+              title="Adding and importing voters and generating 8-digit PINs is restricted to authorized Election Officers"
             >
               <Lock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-              <span>Roster Additions &amp; PIN Generation: Developer Only</span>
+              <span>Roster Management: Officers Only</span>
             </span>
           )}
 
-          {/* Generate 8-Digit Unique PINs for All Voters Button (Developer Only) */}
-          {isDeveloper && (
+          {/* Generate 8-Digit Unique PINs for All Voters Button */}
+          {canManageRoster && voters.length > 0 && (
             <button
               id="generate-all-pins-btn"
               type="button"
               onClick={() => setIsBulkGenerateModalOpen(true)}
-              title="Generate 8-digit unique Access PIN / Security Code at once for all voters (Developer Only)"
+              title="Generate 8-digit unique Access PIN / Security Code at once for voters"
               className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
             >
               <Sparkles className="w-4 h-4 text-amber-300" />
-              <span>Generate 8-Digit PINs (All)</span>
+              <span>Generate PINs</span>
             </button>
           )}
 
@@ -500,14 +564,14 @@ export const VoterRosterTab: React.FC<VoterRosterTabProps> = ({
             <span>{isSyncingFirestore ? 'Syncing...' : 'Sync to Firestore'}</span>
           </button>
 
-          {/* CSV Upload (Developer Only) */}
-          {isDeveloper && (
+          {/* CSV Upload */}
+          {canManageRoster && (
             <label
               id="import-csv-label"
-              className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-850 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 cursor-pointer flex items-center gap-1.5 shadow-2xs transition-colors"
+              className="px-3.5 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900 text-xs font-bold text-indigo-700 dark:text-indigo-300 cursor-pointer flex items-center gap-1.5 shadow-2xs transition-colors"
             >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              <span>Import CSV</span>
+              <FileSpreadsheet className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <span>Import CSV Register</span>
               <input
                 id="csv-file-input"
                 type="file"
@@ -516,6 +580,20 @@ export const VoterRosterTab: React.FC<VoterRosterTabProps> = ({
                 className="hidden"
               />
             </label>
+          )}
+
+          {/* Clear Voter Register Button */}
+          {canManageRoster && voters.length > 0 && (
+            <button
+              id="clear-register-btn"
+              type="button"
+              onClick={() => setIsClearRosterModalOpen(true)}
+              title="Clear all voters from the register to start fresh or re-import"
+              className="px-3 py-2 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 hover:bg-rose-100 dark:hover:bg-rose-900 text-xs font-bold text-rose-700 dark:text-rose-300 flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+              <span>Clear Register</span>
+            </button>
           )}
 
           {/* Sample CSV Template */}
@@ -569,8 +647,8 @@ export const VoterRosterTab: React.FC<VoterRosterTabProps> = ({
             <span>Print QR Cards</span>
           </button>
 
-          {/* Manual Add Voter (Developer Only) */}
-          {isDeveloper && !isAdding && (
+          {/* Manual Add Voter */}
+          {canManageRoster && !isAdding && (
             <button
               id="add-single-voter-btn"
               type="button"
@@ -584,8 +662,8 @@ export const VoterRosterTab: React.FC<VoterRosterTabProps> = ({
         </div>
       </div>
 
-      {/* Manual Add Voter Form (hidden during print, Developer only) */}
-      {isDeveloper && isAdding && (
+      {/* Manual Add Voter Form (hidden during print) */}
+      {canManageRoster && isAdding && (
         <form
           onSubmit={handleManualAdd}
           className="p-5 bg-slate-50 dark:bg-slate-850 rounded-2xl border-2 border-indigo-200 dark:border-indigo-800 space-y-3 animate-in fade-in transition-colors print:hidden"
@@ -876,23 +954,23 @@ export const VoterRosterTab: React.FC<VoterRosterTabProps> = ({
                             >
                               <QrCode className="w-3.5 h-3.5" />
                             </button>
-                            {/* PIN generation is strictly restricted to Developer account */}
-                            {isDeveloper && (
+                            {/* PIN generation is available to authorized officers */}
+                            {canManageRoster && (
                               <button
                                 type="button"
                                 onClick={() => handleRegeneratePinSingle(voter)}
-                                title="Generate new 8-digit Access PIN for this student (Developer Only)"
+                                title="Generate new 8-digit Access PIN for this student"
                                 className="p-1.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 rounded-lg transition-colors cursor-pointer"
                               >
                                 <RefreshCw className="w-3.5 h-3.5" />
                               </button>
                             )}
-                            {isDeveloper && (
+                            {canManageRoster && (
                               <button
                                 id={`delete-voter-btn-${voter.id}`}
                                 type="button"
                                 onClick={() => setDeleteConfirmVoter(voter)}
-                                title="Remove unvoted student from roster (Developer Only)"
+                                title="Remove unvoted student from roster"
                                 className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded-lg transition-colors cursor-pointer"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -910,8 +988,8 @@ export const VoterRosterTab: React.FC<VoterRosterTabProps> = ({
         </div>
       </div>
 
-      {/* Bulk Generate 8-Digit Unique PINs Confirmation Modal (Developer Only) */}
-      {isDeveloper && isBulkGenerateModalOpen && (
+      {/* Bulk Generate 8-Digit Unique PINs Confirmation Modal */}
+      {canManageRoster && isBulkGenerateModalOpen && (
         <div
           id="bulk-generate-codes-modal"
           className="fixed inset-0 z-50 flex items-start justify-center pt-8 sm:pt-14 pb-8 px-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto"
@@ -1021,6 +1099,145 @@ export const VoterRosterTab: React.FC<VoterRosterTabProps> = ({
               >
                 <Sparkles className="w-4 h-4" />
                 <span>Generate Unique PINs</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Clear Voter Register Confirmation */}
+      <ConfirmModal
+        isOpen={isClearRosterModalOpen}
+        title="Clear Entire Voter Register?"
+        message={`Are you sure you want to clear all ${voters.length} registered voters? This removes current records so you can start with a clean slate or import a fresh voter register.`}
+        confirmLabel="Clear Register"
+        confirmVariant="danger"
+        onConfirm={handleClearAllVoters}
+        onCancel={() => setIsClearRosterModalOpen(false)}
+      />
+
+      {/* CSV Import Choices Modal */}
+      {isImportModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                  <FileSpreadsheet className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 dark:text-white">
+                    Import Voter Register
+                  </h3>
+                  <p className="text-2xs text-slate-500 dark:text-slate-400">
+                    Ready to import {parsedImportVoters.length} voters from CSV
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsImportModalOpen(false);
+                  setParsedImportVoters([]);
+                }}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-3.5 bg-slate-50 dark:bg-slate-850 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 text-xs space-y-1.5">
+              <div className="flex justify-between text-slate-700 dark:text-slate-300 font-bold">
+                <span>Voters in File:</span>
+                <span>{parsedImportVoters.length}</span>
+              </div>
+              <div className="flex justify-between text-slate-500 dark:text-slate-400 text-2xs">
+                <span>Unique 8-Digit Access PINs Generated:</span>
+                <span>{importStats.generatedPins}</span>
+              </div>
+              {importStats.duplicatesSkipped > 0 && (
+                <div className="flex justify-between text-amber-600 dark:text-amber-400 text-2xs">
+                  <span>Duplicate IDs in file skipped:</span>
+                  <span>{importStats.duplicatesSkipped}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2.5">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                Select Import Action:
+              </label>
+
+              <label
+                className={`flex items-start gap-3 p-3.5 rounded-2xl border-2 cursor-pointer transition-all ${
+                  importMode === 'REPLACE'
+                    ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/30'
+                    : 'border-slate-200 dark:border-slate-700 hover:border-indigo-300'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="importMode"
+                  checked={importMode === 'REPLACE'}
+                  onChange={() => setImportMode('REPLACE')}
+                  className="mt-0.5 text-indigo-600 focus:ring-indigo-500"
+                />
+                <div>
+                  <strong className="text-xs font-bold text-slate-900 dark:text-white block">
+                    Replace Entire Register (Recommended)
+                  </strong>
+                  <span className="text-2xs text-slate-500 dark:text-slate-400">
+                    Clears any existing demo/old voters and sets this official CSV list as the exact register.
+                  </span>
+                </div>
+              </label>
+
+              <label
+                className={`flex items-start gap-3 p-3.5 rounded-2xl border-2 cursor-pointer transition-all ${
+                  importMode === 'APPEND'
+                    ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/30'
+                    : 'border-slate-200 dark:border-slate-700 hover:border-indigo-300'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="importMode"
+                  checked={importMode === 'APPEND'}
+                  onChange={() => setImportMode('APPEND')}
+                  className="mt-0.5 text-indigo-600 focus:ring-indigo-500"
+                />
+                <div>
+                  <strong className="text-xs font-bold text-slate-900 dark:text-white block">
+                    Append to Existing Register
+                  </strong>
+                  <span className="text-2xs text-slate-500 dark:text-slate-400">
+                    Keeps the current {voters.length} registered voters and adds new records without duplicate IDs.
+                  </span>
+                </div>
+              </label>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsImportModalOpen(false);
+                  setParsedImportVoters([]);
+                }}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                id="confirm-import-register-btn"
+                type="button"
+                onClick={handleConfirmImport}
+                className="px-5 py-2.5 rounded-xl text-xs font-black text-white bg-indigo-600 hover:bg-indigo-700 shadow-md transition-all flex items-center gap-2 cursor-pointer"
+              >
+                <Check className="w-4 h-4" />
+                <span>
+                  {importMode === 'REPLACE' ? 'Replace & Load Register' : 'Append to Register'}
+                </span>
               </button>
             </div>
           </div>

@@ -137,30 +137,47 @@ export default function App() {
     }
   }, [status, voterResultsViewer, currentView, isAdminAuthenticated]);
 
-  // 1. Initial Data Loading & Real-Time Syncing (Online Concurrent Voting across Netlify & devices)
+  // 1. Initial Data Loading & Real-Time Syncing (Robust local-first & cloud synchronization)
   useEffect(() => {
     let isMounted = true;
 
-    // Load from online server & Firestore first, fallback to IndexedDB
     const initializeData = async () => {
       let resolvedData = false;
+      let cloudStatusVerified = false;
 
-      // Safety timeout: Ensure the app renders within 5.5 seconds even if storage or networks are slow
+      // 1. IMMEDIATELY LOAD LOCAL PERSISTENCE (IndexedDB / localStorage)
+      // This ensures that user-imported voter registers, candidates, and custom settings
+      // are never overwritten by static serverless defaults or network delays!
+      let localData: ElectionData | null = null;
+      try {
+        localData = await loadElectionData();
+        if (localData && isMounted) {
+          setData(localData);
+          resolvedData = true;
+          const savedStatus = loadStoredElectionStatus();
+          if (savedStatus) {
+            setStatus(savedStatus);
+          }
+        }
+      } catch (err) {
+        console.warn('[Storage] Could not load from local IndexedDB:', err);
+      }
+
+      // Safety timeout: Ensure the app finishes initial status check within 4 seconds
       const safetyTimeout = setTimeout(() => {
         if (isMounted) {
           if (!resolvedData) {
-            console.warn('Initial storage load timed out, rendering with cached/default election data');
+            console.warn('Initial storage load timed out, rendering with fallback election data');
             setData((prev) => prev || getDefaultElectionData());
           }
           setIsStatusChecked(true);
         }
-      }, 5500);
+      }, 4000);
 
-      // 1. PRIORITIZE WAITING FOR FIREBASE 'ElectionStatus' CHECK
-      // Strictly eliminates transient 'closed' or 'setup' state flashes during page refresh
-      let cloudStatusVerified = false;
+      // 2. CHECK CANONICAL FIREBASE 'election_metadata' CLOUD STATE
+      // Allows multi-device real-time sync across Vercel, mobile stations, and admin laptops
       try {
-        const timeoutPromise = new Promise<null>((res) => setTimeout(() => res(null), 5000));
+        const timeoutPromise = new Promise<null>((res) => setTimeout(() => res(null), 3500));
         const cloudMeta = await Promise.race([getElectionMetadataFromFirestore(), timeoutPromise]);
 
         if (cloudMeta && isMounted) {
@@ -169,25 +186,42 @@ export default function App() {
             saveStoredElectionStatus(cloudMeta.status);
             cloudStatusVerified = true;
           }
-          if (Array.isArray(cloudMeta.positions) || cloudMeta.config) {
+
+          if (Array.isArray(cloudMeta.positions) || cloudMeta.config || Array.isArray(cloudMeta.voters)) {
             const fallback = getDefaultElectionData();
             let baseAccounts = (Array.isArray(cloudMeta.accounts) && cloudMeta.accounts.length > 0)
               ? [...cloudMeta.accounts]
-              : [...fallback.accounts];
+              : (localData?.accounts || [...fallback.accounts]);
             for (const defAcc of fallback.accounts) {
               if (!baseAccounts.some((a) => a.id === defAcc.id || a.role === defAcc.role)) {
                 baseAccounts.push(defAcc);
               }
             }
+
+            // If cloud has voters, use them. If cloud has no voters, PRESERVE local voters!
+            const mergedVoters = (Array.isArray(cloudMeta.voters) && cloudMeta.voters.length > 0)
+              ? cloudMeta.voters
+              : (localData?.voters || []);
+
+            const mergedConfig = {
+              ...(localData?.config || fallback.config),
+              ...(cloudMeta.config || {}),
+            };
+
             const cloudData: ElectionData = {
-              config: cloudMeta.config ? { ...fallback.config, ...cloudMeta.config } : fallback.config,
-              positions: Array.isArray(cloudMeta.positions) ? cloudMeta.positions : [],
-              candidates: Array.isArray(cloudMeta.candidates) ? cloudMeta.candidates : [],
-              voters: Array.isArray(cloudMeta.voters) ? cloudMeta.voters : [],
-              ballots: [],
-              auditLogs: fallback.auditLogs,
+              config: mergedConfig,
+              positions: Array.isArray(cloudMeta.positions) && cloudMeta.positions.length > 0
+                ? cloudMeta.positions
+                : (localData?.positions || fallback.positions),
+              candidates: Array.isArray(cloudMeta.candidates) && cloudMeta.candidates.length > 0
+                ? cloudMeta.candidates
+                : (localData?.candidates || fallback.candidates),
+              voters: mergedVoters,
+              ballots: localData?.ballots || [],
+              auditLogs: localData?.auditLogs && localData.auditLogs.length > 0 ? localData.auditLogs : fallback.auditLogs,
               accounts: baseAccounts,
             };
+
             setData(cloudData);
             saveElectionData(cloudData).catch(() => {});
             resolvedData = true;
@@ -201,7 +235,7 @@ export default function App() {
         }
       }
 
-      // 2. Fetch from online Express server (if running in full-stack Node container)
+      // 3. Optional: Query server if local storage was completely empty (e.g. first visit on new machine)
       if (!resolvedData && isMounted) {
         try {
           const response = await fetchWithBackoff(
@@ -223,40 +257,16 @@ export default function App() {
             }
           }
         } catch (err) {
-          console.warn('Could not load from /api/election server, falling back to local DB:', err);
+          console.warn('Could not load from /api/election server:', err);
         }
       }
 
-      // 3. Fallback to IndexedDB / localStorage
+      // 4. Default clean state if everything was empty
       if (!resolvedData && isMounted) {
-        try {
-          const loaded = await loadElectionData();
-          if (isMounted) {
-            resolvedData = true;
-            setData(loaded);
-            if (!cloudStatusVerified) {
-              const savedStatus = loadStoredElectionStatus();
-              if (savedStatus) {
-                setStatus(savedStatus);
-              } else if (loaded.ballots.length > 0) {
-                setStatus('Open');
-              } else {
-                setStatus('Open');
-              }
-            }
-          }
-        } catch (fallbackErr) {
-          console.error('Failed to load local election data:', fallbackErr);
-          if (isMounted) {
-            resolvedData = true;
-            const fallback = getDefaultElectionData();
-            setData(fallback);
-            if (!cloudStatusVerified) {
-              const savedStatus = loadStoredElectionStatus();
-              setStatus(savedStatus || 'Open');
-            }
-          }
-        }
+        const fallback = getDefaultElectionData();
+        setData(fallback);
+        saveElectionData(fallback).catch(() => {});
+        resolvedData = true;
       }
 
       clearTimeout(safetyTimeout);

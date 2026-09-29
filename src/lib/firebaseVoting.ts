@@ -104,11 +104,32 @@ export async function markVoterTokenUsedInFirestore(
 /**
  * Syncs the entire voter roster into Firestore voter_tokens collection.
  */
-export async function syncVoterRosterToFirestoreTokens(voters: Voter[]): Promise<{
+export async function syncVoterRosterToFirestoreTokens(
+  voters: Voter[],
+  clearOld: boolean = false
+): Promise<{
   success: boolean;
   count: number;
 }> {
   try {
+    // If clearOld requested or roster is empty, purge stale voter tokens first
+    if (clearOld || voters.length === 0) {
+      const snap = await getDocs(collection(db, 'voter_tokens'));
+      if (!snap.empty) {
+        const docs = snap.docs;
+        for (let i = 0; i < docs.length; i += 400) {
+          const batch = writeBatch(db);
+          const chunk = docs.slice(i, i + 400);
+          chunk.forEach((d) => batch.delete(d.ref));
+          await batch.commit();
+        }
+      }
+    }
+
+    if (voters.length === 0) {
+      return { success: true, count: 0 };
+    }
+
     // Write in batches of up to 400 documents
     const batchSize = 400;
     let processed = 0;
