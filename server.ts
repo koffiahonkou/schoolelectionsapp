@@ -17,7 +17,59 @@ if (!fs.existsSync(DATA_DIR)) {
 
 // In-memory canonical election state
 let electionData: ElectionData;
-let electionStatus: ElectionStatus = 'Open';
+let electionStatus: ElectionStatus = 'Setup';
+
+let firestoreDb: any = null;
+
+function getDb() {
+  if (firestoreDb) return firestoreDb;
+  try {
+    let config: any = null;
+    const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+    if (fs.existsSync(configPath)) {
+      config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    }
+    if (config) {
+      const { initializeApp, getApps, getApp } = require('firebase/app');
+      const { getFirestore } = require('firebase/firestore');
+      const app = getApps().length > 0 ? getApp() : initializeApp(config);
+      firestoreDb = getFirestore(app, config.firestoreDatabaseId);
+    }
+  } catch {
+    // ignore
+  }
+  return firestoreDb;
+}
+
+async function syncWithFirestore() {
+  try {
+    const db = getDb();
+    if (!db) return;
+    const { doc, getDoc } = require('firebase/firestore');
+    const timeout = new Promise<null>((res) => setTimeout(() => res(null), 2500));
+    const snap = await Promise.race([getDoc(doc(db, 'election_metadata', 'current')), timeout]);
+    if (snap && snap.exists && snap.exists()) {
+      const cloud = snap.data();
+      if (cloud.status) {
+        electionStatus = cloud.status;
+      }
+      if (cloud.config || cloud.positions) {
+        electionData = {
+          ...electionData,
+          config: cloud.config ? { ...electionData.config, ...cloud.config } : electionData.config,
+          positions: Array.isArray(cloud.positions) ? cloud.positions : electionData.positions,
+          candidates: Array.isArray(cloud.candidates) ? cloud.candidates : electionData.candidates,
+          voters: Array.isArray(cloud.voters) ? cloud.voters : electionData.voters,
+          accounts: Array.isArray(cloud.accounts) && cloud.accounts.length > 0 ? cloud.accounts : electionData.accounts,
+        };
+        saveElectionToDisk();
+        console.log(`[Server] Synchronized with Firestore: "${electionData.config.title}" (Status: ${electionStatus})`);
+      }
+    }
+  } catch (err: any) {
+    console.warn('[Server] Firestore sync warning:', err?.message);
+  }
+}
 
 // Load initial state from disk or fallback to default
 try {
@@ -38,6 +90,9 @@ try {
   electionData = getDefaultElectionData();
   electionStatus = 'Setup';
 }
+
+// Check Firestore asynchronously on startup to guarantee latest live state
+syncWithFirestore().catch(() => {});
 
 const GENESIS_HASH = '0000000000000000000000000000000000000000000000000000000000000000';
 
@@ -603,8 +658,12 @@ async function startServer() {
   });
 
   // GET current election state
-  app.get('/api/election', (req, res) => {
+  app.get('/api/election', async (req, res) => {
     logIpActivity(req, 'Fetch Election State', 200);
+    // If in-memory state still has default title, attempt sync with Firestore first
+    if (electionData.config.title === '2026 Student Representative Council Elections') {
+      await syncWithFirestore();
+    }
     res.json({
       success: true,
       data: electionData,
@@ -871,6 +930,31 @@ async function startServer() {
     );
 
     saveElectionToDisk();
+
+    // Persist to Firestore asynchronously so server and cloud remain in sync
+    try {
+      const db = getDb();
+      if (db) {
+        const { doc, setDoc } = require('firebase/firestore');
+        const updatePayload: Record<string, any> = {
+          lastUpdated: new Date().toISOString(),
+          updatedBy: actor ? `${actor} (${actorRole || 'Staff'})` : 'Admin',
+        };
+        if (updatedStatus) updatePayload.status = updatedStatus;
+        if (updatedData?.config) updatePayload.config = updatedData.config;
+        if (Array.isArray(updatedData?.positions)) updatePayload.positions = updatedData.positions;
+        if (Array.isArray(updatedData?.candidates)) updatePayload.candidates = updatedData.candidates;
+        if (Array.isArray(updatedData?.voters)) {
+          updatePayload.voters = updatedData.voters;
+          updatePayload.totalEligibleVoters = updatedData.voters.length;
+        }
+        if (Array.isArray(updatedData?.accounts)) updatePayload.accounts = updatedData.accounts;
+        setDoc(doc(db, 'election_metadata', 'current'), updatePayload, { merge: true }).catch(() => {});
+      }
+    } catch {
+      // ignore
+    }
+
     res.json({
       success: true,
       data: electionData,
@@ -909,6 +993,27 @@ async function startServer() {
 
     logIpActivity(req, `Election Reset: "${title}"`, 200, false, undefined, actor);
     saveElectionToDisk();
+
+    // Reset Firestore election_metadata in the background
+    try {
+      const db = getDb();
+      if (db) {
+        const { doc, setDoc } = require('firebase/firestore');
+        setDoc(doc(db, 'election_metadata', 'current'), {
+          status: 'Setup',
+          config: electionData.config,
+          positions: [],
+          candidates: [],
+          voters: [],
+          totalEligibleVoters: 0,
+          accounts: electionData.accounts,
+          lastUpdated: new Date().toISOString(),
+          updatedBy: `${actor || 'Admin'} (Server Reset)`,
+        }).catch(() => {});
+      }
+    } catch {
+      // ignore
+    }
 
     res.json({
       success: true,

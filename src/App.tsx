@@ -205,19 +205,28 @@ export default function App() {
               ? cloudMeta.voters
               : (localData?.voters || []);
 
-            const mergedConfig = {
-              ...(localData?.config || fallback.config),
-              ...(cloudMeta.config || {}),
-            };
+            const isCloudDefault = cloudMeta.config?.title === '2026 Student Representative Council Elections';
+            const isLocalCustom = localData?.config?.title && localData.config.title !== '2026 Student Representative Council Elections';
+
+            const mergedConfig = (isLocalCustom && isCloudDefault)
+              ? localData!.config
+              : {
+                  ...(localData?.config || fallback.config),
+                  ...(cloudMeta.config || {}),
+                };
+
+            const mergedPositions = (isLocalCustom && isCloudDefault && localData?.positions && localData.positions.length > 0)
+              ? localData.positions
+              : (Array.isArray(cloudMeta.positions) ? cloudMeta.positions : (localData?.positions || []));
+
+            const mergedCandidates = (isLocalCustom && isCloudDefault && localData?.candidates && localData.candidates.length > 0)
+              ? localData.candidates
+              : (Array.isArray(cloudMeta.candidates) ? cloudMeta.candidates : (localData?.candidates || []));
 
             const cloudData: ElectionData = {
               config: mergedConfig,
-              positions: Array.isArray(cloudMeta.positions)
-                ? cloudMeta.positions
-                : (localData?.positions || []),
-              candidates: Array.isArray(cloudMeta.candidates)
-                ? cloudMeta.candidates
-                : (localData?.candidates || []),
+              positions: mergedPositions,
+              candidates: mergedCandidates,
               voters: mergedVoters,
               ballots: cloudMeta.status === 'Setup' ? [] : (localData?.ballots || []),
               auditLogs: localData?.auditLogs && localData.auditLogs.length > 0 ? localData.auditLogs : fallback.auditLogs,
@@ -332,9 +341,16 @@ export default function App() {
               setData((prev) => {
                 if (!prev) return json.data;
 
+                const isApiDefault = json.data.config?.title === '2026 Student Representative Council Elections';
+                const isPrevCustom = prev.config?.title && prev.config.title !== '2026 Student Representative Council Elections';
+
+                // If client already has a customized live election, never overwrite with default demo placeholder!
+                if (isPrevCustom && isApiDefault) {
+                  return prev;
+                }
+
                 // Never overwrite a live election with an empty or placeholder schema
-                const prevHasLiveSetup = (prev.positions && prev.positions.length > 0) ||
-                  (prev.config && prev.config.title && prev.config.title !== '2026 Student Representative Council Elections');
+                const prevHasLiveSetup = (prev.positions && prev.positions.length > 0) || isPrevCustom;
                 const apiHasSetup = json.data.positions && json.data.positions.length > 0;
 
                 if (prevHasLiveSetup && !apiHasSetup) {
@@ -342,26 +358,29 @@ export default function App() {
                 }
 
                 // Preserve existing voters if user has loaded or imported records
-                const currentVoters = (prev.voters && prev.voters.length > 0)
+                const currentVoters = (prev.voters && prev.voters.length > 0 && (!json.data.voters || json.data.voters.length === 0))
                   ? prev.voters
                   : (json.data.voters || []);
 
                 return {
                   ...prev,
                   ...json.data,
-                  config: {
-                    ...prev.config,
-                    ...(json.data.config || {}),
-                  },
-                  positions: prev.positions,
-                  candidates: prev.candidates,
+                  config: (isPrevCustom && isApiDefault)
+                    ? prev.config
+                    : {
+                        ...prev.config,
+                        ...(json.data.config || {}),
+                      },
+                  positions: (apiHasSetup && !isApiDefault) ? json.data.positions : (prev.positions || []),
+                  candidates: (json.data.candidates && json.data.candidates.length > 0 && !isApiDefault) ? json.data.candidates : (prev.candidates || []),
                   voters: currentVoters,
                   accounts: (json.data.accounts && json.data.accounts.length > 0) ? json.data.accounts : (prev.accounts && prev.accounts.length > 0 ? prev.accounts : DEFAULT_USER_ACCOUNTS),
                 };
               });
 
               // Update status from polling if no local commissioner status is explicitly stored
-              if (json.status) {
+              const isApiDefault = json.data.config?.title === '2026 Student Representative Council Elections';
+              if (json.status && !isApiDefault) {
                 setStatus((cur) => {
                   const stored = loadStoredElectionStatus();
                   if (stored) return stored; // Respect stored commissioner intent
