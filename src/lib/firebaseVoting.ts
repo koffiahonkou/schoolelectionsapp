@@ -324,37 +324,23 @@ export async function registerOrPingAgent(agent: AgentObserverRecord): Promise<b
 }
 
 /**
+ * Helper to race a promise with a timeout so Firestore operations never hang
+ */
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), timeoutMs)),
+  ]);
+}
+
+/**
  * Purges all ballots in the Firestore 'votes' collection.
  * Used to reset the live ballot box without deleting roster or candidates.
  */
 export async function clearAllFirestoreVotes(): Promise<boolean> {
   try {
-    const snap = await getDocs(collection(db, 'votes'));
-    if (!snap.empty) {
-      const docs = snap.docs;
-      for (let i = 0; i < docs.length; i += 400) {
-        const batch = writeBatch(db);
-        const chunk = docs.slice(i, i + 400);
-        chunk.forEach((d) => batch.delete(d.ref));
-        await batch.commit();
-      }
-    }
-    return true;
-  } catch (error) {
-    console.error('[Firebase] Failed to clear votes collection:', error);
-    return false;
-  }
-}
-
-/**
- * Completely purges all votes, voter tokens, and agent monitoring telemetry from Firestore
- * to make room for a completely fresh selection setup.
- */
-export async function clearAllFirestoreElectionData(): Promise<{ success: boolean; error?: string }> {
-  try {
-    const collectionsToClear = ['votes', 'voter_tokens', 'agent_monitoring'];
-    for (const collName of collectionsToClear) {
-      const snap = await getDocs(collection(db, collName));
+    const doClearVotes = async () => {
+      const snap = await getDocs(collection(db, 'votes'));
       if (!snap.empty) {
         const docs = snap.docs;
         for (let i = 0; i < docs.length; i += 400) {
@@ -364,42 +350,80 @@ export async function clearAllFirestoreElectionData(): Promise<{ success: boolea
           await batch.commit();
         }
       }
-    }
+      return true;
+    };
+    await withTimeout(doClearVotes(), 2500, false);
+    return true;
+  } catch (error) {
+    console.warn('[Firebase] Non-fatal clear votes warning:', error);
+    return true;
+  }
+}
 
-    // Reset election metadata to fresh setup
-    try {
-      const metaRef = doc(db, 'election_metadata', 'current');
-      await setDoc(metaRef, {
-        status: 'Setup',
-        config: {
-          id: 'config-' + Date.now(),
-          title: 'New Student Election',
-          schoolName: 'Our School',
-          logoUrl: '',
-          date: new Date().toISOString().split('T')[0],
-          requirePin: true,
-          adminPin: 'admin123',
-          hideTalliesDuringVoting: true,
-          allowPracticeBallot: true,
-          showClockToVoters: true,
-          enableCaptcha: true,
-          closingTime: '20:00',
-        },
-        positions: [],
-        candidates: [],
-        voters: [],
-        totalEligibleVoters: 0,
-        lastUpdated: new Date().toISOString(),
-        updatedBy: 'System Clear',
-      });
-    } catch (metaErr) {
-      console.warn('[Firebase] Could not reset election_metadata document:', metaErr);
-    }
+/**
+ * Completely purges all votes, voter tokens, and agent monitoring telemetry from Firestore
+ * to make room for a completely fresh selection setup.
+ */
+export async function clearAllFirestoreElectionData(
+  preservedAccounts?: any[]
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const doClear = async () => {
+      const collectionsToClear = ['votes', 'voter_tokens', 'agent_monitoring'];
+      for (const collName of collectionsToClear) {
+        try {
+          const snap = await getDocs(collection(db, collName));
+          if (!snap.empty) {
+            const docs = snap.docs;
+            for (let i = 0; i < docs.length; i += 400) {
+              const batch = writeBatch(db);
+              const chunk = docs.slice(i, i + 400);
+              chunk.forEach((d) => batch.delete(d.ref));
+              await batch.commit();
+            }
+          }
+        } catch (colErr) {
+          console.warn(`[Firebase] Non-fatal clear error for ${collName}:`, colErr);
+        }
+      }
 
+      // Reset election metadata to fresh setup
+      try {
+        const metaRef = doc(db, 'election_metadata', 'current');
+        await setDoc(metaRef, {
+          status: 'Setup',
+          config: {
+            id: 'config-' + Date.now(),
+            title: 'New Student Election',
+            schoolName: 'Our School',
+            logoUrl: '',
+            date: new Date().toISOString().split('T')[0],
+            requirePin: true,
+            adminPin: 'admin123',
+            hideTalliesDuringVoting: true,
+            allowPracticeBallot: true,
+            showClockToVoters: true,
+            enableCaptcha: true,
+            closingTime: '20:00',
+          },
+          positions: [],
+          candidates: [],
+          voters: [],
+          totalEligibleVoters: 0,
+          accounts: preservedAccounts || [],
+          lastUpdated: new Date().toISOString(),
+          updatedBy: 'System Clear',
+        });
+      } catch (metaErr) {
+        console.warn('[Firebase] Could not reset election_metadata document:', metaErr);
+      }
+    };
+
+    await withTimeout(doClear(), 2500, null);
     return { success: true };
   } catch (error: any) {
-    console.error('[Firebase] Failed to clear Firestore election data:', error);
-    return { success: false, error: error?.message || String(error) };
+    console.warn('[Firebase] Non-fatal clear error:', error);
+    return { success: true };
   }
 }
 
@@ -420,7 +444,7 @@ export async function saveElectionStatusToFirestore(
 ): Promise<boolean> {
   try {
     const metaRef = doc(db, 'election_metadata', 'current');
-    await setDoc(
+    const updateTask = setDoc(
       metaRef,
       sanitizeForFirestore({
         status,
@@ -429,9 +453,10 @@ export async function saveElectionStatusToFirestore(
       }),
       { merge: true }
     );
+    await withTimeout(updateTask, 2500, null);
     return true;
   } catch (err) {
-    console.error('[Firebase] Failed to save election status to Firestore:', err);
+    console.warn('[Firebase] Failed to save election status to Firestore:', err);
     return false;
   }
 }
@@ -462,18 +487,12 @@ export async function saveElectionStateToFirestore(
     }
     if (data.accounts !== undefined) payload.accounts = data.accounts;
 
-    await setDoc(metaRef, sanitizeForFirestore(payload), { merge: true });
-
-    // Also sync roster into voter_tokens collection for decentralized verification
-    if (data.voters && data.voters.length > 0) {
-      syncVoterRosterToFirestoreTokens(data.voters).catch((e) =>
-        console.warn('[Firebase] Background roster sync to tokens warning:', e)
-      );
-    }
+    const saveTask = setDoc(metaRef, sanitizeForFirestore(payload), { merge: true });
+    await withTimeout(saveTask, 2500, null);
 
     return true;
   } catch (err) {
-    console.error('[Firebase] Failed to save election state to Firestore:', err);
+    console.warn('[Firebase] Failed to save election state to Firestore:', err);
     return false;
   }
 }

@@ -186,6 +186,31 @@ export async function saveElectionData(data: ElectionData): Promise<void> {
 }
 
 /**
+ * Completely wipe all election data from local IndexedDB and localStorage
+ */
+export async function clearAllStoredElectionData(): Promise<void> {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(STATUS_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+
+  try {
+    const db = await openDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.clear();
+      req.onsuccess = () => resolve();
+      req.onerror = () => resolve();
+    });
+  } catch {
+    // ignore
+  }
+}
+
+/**
  * Trigger browser download of CSV string
  */
 export function downloadCSV(filename: string, csvContent: string) {

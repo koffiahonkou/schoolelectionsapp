@@ -21,6 +21,7 @@ import {
   createEmptyElectionData,
   loadElectionData,
   saveElectionData,
+  clearAllStoredElectionData,
   normalizeElectionData,
   downloadJSON,
   saveStoredElectionStatus,
@@ -199,8 +200,8 @@ export default function App() {
               }
             }
 
-            // If cloud has voters, use them. If cloud has no voters, PRESERVE local voters!
-            const mergedVoters = (Array.isArray(cloudMeta.voters) && cloudMeta.voters.length > 0)
+            // If cloud metadata has a voter register array, use it directly (even if reset to [])
+            const mergedVoters = Array.isArray(cloudMeta.voters)
               ? cloudMeta.voters
               : (localData?.voters || []);
 
@@ -1018,15 +1019,7 @@ export default function App() {
   };
 
   const handleStartNewElection = async (clearRoster: boolean, isFullSystemWipe = false) => {
-    try {
-      if (isFullSystemWipe || clearRoster) {
-        await clearAllFirestoreElectionData();
-      } else {
-        await clearAllFirestoreVotes();
-      }
-    } catch (err) {
-      console.error('Failed to clear firestore data:', err);
-    }
+    const actor = currentUser?.fullName || 'Admin';
 
     const empty = createEmptyElectionData(
       isFullSystemWipe ? 'New Student Election' : (data?.config.title || 'New Student Election'),
@@ -1052,28 +1045,43 @@ export default function App() {
       empty.positions = [];
       empty.candidates = [];
       empty.ballots = [];
+      empty.auditLogs = [];
     }
     // Retain registered staff accounts across resets
     if (data?.accounts) {
       empty.accounts = data.accounts;
     }
+
+    // 1. Immediately wipe and update local application state
     setData(empty);
     setStatus('Setup');
     saveStoredElectionStatus('Setup');
-    await saveElectionStatusToFirestore('Setup', currentUser?.fullName || 'Admin').catch(() => {});
-    await saveElectionStateToFirestore(empty, 'Setup', currentUser?.fullName || 'Admin').catch(() => {});
-    await saveElectionData(empty);
 
-    // Sync to backend and serverless endpoints so memory, disk, and cloud all wipe
+    if (isFullSystemWipe) {
+      clearAllStoredElectionData().catch(() => {});
+    }
+    await saveElectionData(empty).catch(() => {});
+
+    // 2. Asynchronously propagate wipe to cloud Firestore & serverless endpoints
+    // (Never block the local UI modal on cloud network delays or quota limits!)
+    const cloudPurge = isFullSystemWipe || clearRoster
+      ? clearAllFirestoreElectionData(empty.accounts)
+      : clearAllFirestoreVotes();
+
+    cloudPurge.catch((err) => console.warn('[Storage] Background cloud clear warning:', err));
+    saveElectionStatusToFirestore('Setup', actor).catch(() => {});
+    saveElectionStateToFirestore(empty, 'Setup', actor).catch(() => {});
+
     postJsonWithBackoff('/api/election/reset', {
       title: empty.config.title,
       school: empty.config.schoolName,
-      actor: currentUser?.fullName || 'Admin',
+      actor,
     }).catch(() => {});
+
     postJsonWithBackoff('/api/election/update', {
       data: empty,
       status: 'Setup',
-      actor: currentUser?.fullName || 'Admin',
+      actor,
       actionDescription: isFullSystemWipe ? 'Full system data purge' : 'New election cycle initialized',
     }).catch(() => {});
 

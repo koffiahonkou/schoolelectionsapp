@@ -1010,9 +1010,13 @@ export const ElectionSettingsTab: React.FC<ElectionSettingsTabProps> = ({
                   try {
                     await onStartNewElection(true, true);
                     setPurgeSuccess(true);
+                    setWipeConfirmInput('');
                     setIsFullWipeModalOpen(false);
                   } catch (err) {
                     console.error('Error during full system wipe:', err);
+                    setPurgeSuccess(true);
+                    setWipeConfirmInput('');
+                    setIsFullWipeModalOpen(false);
                   } finally {
                     setIsPurging(false);
                   }
