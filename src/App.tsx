@@ -210,12 +210,12 @@ export default function App() {
 
             const cloudData: ElectionData = {
               config: mergedConfig,
-              positions: Array.isArray(cloudMeta.positions) && cloudMeta.positions.length > 0
+              positions: Array.isArray(cloudMeta.positions)
                 ? cloudMeta.positions
-                : (localData?.positions || fallback.positions),
-              candidates: Array.isArray(cloudMeta.candidates) && cloudMeta.candidates.length > 0
+                : (localData?.positions || []),
+              candidates: Array.isArray(cloudMeta.candidates)
                 ? cloudMeta.candidates
-                : (localData?.candidates || fallback.candidates),
+                : (localData?.candidates || []),
               voters: mergedVoters,
               ballots: localData?.ballots || [],
               auditLogs: localData?.auditLogs && localData.auditLogs.length > 0 ? localData.auditLogs : fallback.auditLogs,
@@ -351,8 +351,8 @@ export default function App() {
                     ...prev.config,
                     ...(json.data.config || {}),
                   },
-                  positions: (json.data.positions && json.data.positions.length > 0) ? json.data.positions : prev.positions,
-                  candidates: (json.data.candidates && json.data.candidates.length > 0) ? json.data.candidates : prev.candidates,
+                  positions: prev.positions,
+                  candidates: prev.candidates,
                   voters: currentVoters,
                   accounts: (json.data.accounts && json.data.accounts.length > 0) ? json.data.accounts : (prev.accounts && prev.accounts.length > 0 ? prev.accounts : DEFAULT_USER_ACCOUNTS),
                 };
@@ -1047,6 +1047,20 @@ export default function App() {
     await saveElectionStatusToFirestore('Setup', currentUser?.fullName || 'Admin').catch(() => {});
     await saveElectionStateToFirestore(empty, 'Setup', currentUser?.fullName || 'Admin').catch(() => {});
     await saveElectionData(empty);
+
+    // Sync to backend and serverless endpoints so memory, disk, and cloud all wipe
+    postJsonWithBackoff('/api/election/reset', {
+      title: empty.config.title,
+      school: empty.config.schoolName,
+      actor: currentUser?.fullName || 'Admin',
+    }).catch(() => {});
+    postJsonWithBackoff('/api/election/update', {
+      data: empty,
+      status: 'Setup',
+      actor: currentUser?.fullName || 'Admin',
+      actionDescription: isFullSystemWipe ? 'Full system data purge' : 'New election cycle initialized',
+    }).catch(() => {});
+
     sounds.playSelect();
     logAuditEvent(
       'settings_updated',

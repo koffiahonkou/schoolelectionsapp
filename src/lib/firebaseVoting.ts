@@ -348,6 +348,20 @@ export async function clearAllFirestoreElectionData(): Promise<{ success: boolea
       const metaRef = doc(db, 'election_metadata', 'current');
       await setDoc(metaRef, {
         status: 'Setup',
+        config: {
+          id: 'config-' + Date.now(),
+          title: 'New Student Election',
+          schoolName: 'Our School',
+          logoUrl: '',
+          date: new Date().toISOString().split('T')[0],
+          requirePin: true,
+          adminPin: 'admin123',
+          hideTalliesDuringVoting: true,
+          allowPracticeBallot: true,
+          showClockToVoters: true,
+          enableCaptcha: true,
+          closingTime: '20:00',
+        },
         positions: [],
         candidates: [],
         voters: [],

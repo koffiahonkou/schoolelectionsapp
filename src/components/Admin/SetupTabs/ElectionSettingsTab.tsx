@@ -897,45 +897,27 @@ export const ElectionSettingsTab: React.FC<ElectionSettingsTabProps> = ({
         </div>
 
         {/* Clear System Action Button */}
-        {(() => {
-          const isClosed = status === 'Closed' || status === 'Results Published';
-          const canWipe = isClosed && hasExportedBackup;
-          return (
-            <div className="pt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-t border-slate-800">
-              <div className="text-xs text-slate-400">
-                {!canWipe ? (
-                  <span className="flex items-center gap-1.5 text-amber-400/90 font-medium">
-                    <Lock className="w-3.5 h-3.5 shrink-0" />
-                    Locked: Please ensure voting is closed and a backup archive is exported first.
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
-                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                    Both safety prerequisites met. System is primed for clean wipe.
-                  </span>
-                )}
-              </div>
+        <div className="pt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-t border-slate-800">
+          <div className="text-xs text-slate-400">
+            <span className="flex items-center gap-1.5 text-rose-400 font-medium">
+              <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
+              Full System Purge: Erases all ballots, candidates, positions, and registered voters for a completely blank election cycle.
+            </span>
+          </div>
 
-              <button
-                type="button"
-                id="full-system-wipe-btn"
-                disabled={!canWipe}
-                onClick={() => {
-                  setWipeConfirmInput('');
-                  setIsFullWipeModalOpen(true);
-                }}
-                className={`px-5 py-2.5 rounded-2xl font-black text-xs flex items-center gap-2 transition-all cursor-pointer ${
-                  canWipe
-                    ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-900/30'
-                    : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed opacity-60'
-                }`}
-              >
-                <Trash2 className="w-4 h-4" />
-                <span>Completely Clear System of All Data</span>
-              </button>
-            </div>
-          );
-        })()}
+          <button
+            type="button"
+            id="full-system-wipe-btn"
+            onClick={() => {
+              setWipeConfirmInput('');
+              setIsFullWipeModalOpen(true);
+            }}
+            className="px-5 py-2.5 rounded-2xl font-black text-xs flex items-center gap-2 transition-all cursor-pointer bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-900/30"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span>Completely Clear System of All Data</span>
+          </button>
+        </div>
       </div>
 
       {/* Full System Wipe Confirmation Modal */}
@@ -959,6 +941,13 @@ export const ElectionSettingsTab: React.FC<ElectionSettingsTabProps> = ({
 
             {/* Modal Content */}
             <div className="p-6 space-y-4">
+              {status === 'Open' && (
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs font-semibold flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 shrink-0 text-amber-500" />
+                  <span>Notice: Voting is currently OPEN. Purging will immediately conclude active voting and erase all active ballots.</span>
+                </div>
+              )}
+
               <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/50 space-y-2">
                 <p className="text-xs font-bold text-rose-900 dark:text-rose-200">
                   The following data will be completely deleted:
@@ -972,6 +961,21 @@ export const ElectionSettingsTab: React.FC<ElectionSettingsTabProps> = ({
                 <p className="text-3xs text-rose-700 dark:text-rose-400 font-semibold pt-1">
                   * Note: Administrator and Developer accounts are preserved so you remain logged in.
                 </p>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 pt-1">
+                <span className="text-2xs text-slate-500">Want to save a copy first?</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onExportBackupJson();
+                    setHasExportedBackup(true);
+                  }}
+                  className="py-1 px-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-2xs flex items-center gap-1.5 font-bold transition-colors cursor-pointer"
+                >
+                  <Download className="w-3 h-3 text-indigo-500" />
+                  <span>{hasExportedBackup ? 'Backup Downloaded' : 'Download Backup First (Optional)'}</span>
+                </button>
               </div>
 
               <div className="space-y-2">
@@ -1000,7 +1004,7 @@ export const ElectionSettingsTab: React.FC<ElectionSettingsTabProps> = ({
               </button>
               <button
                 type="button"
-                disabled={wipeConfirmInput.trim() !== 'CLEAR ALL' || isPurging}
+                disabled={wipeConfirmInput.trim().toUpperCase() !== 'CLEAR ALL' || isPurging}
                 onClick={async () => {
                   setIsPurging(true);
                   try {
@@ -1014,7 +1018,7 @@ export const ElectionSettingsTab: React.FC<ElectionSettingsTabProps> = ({
                   }
                 }}
                 className={`px-5 py-2.5 rounded-xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer ${
-                  wipeConfirmInput.trim() === 'CLEAR ALL' && !isPurging
+                  wipeConfirmInput.trim().toUpperCase() === 'CLEAR ALL' && !isPurging
                     ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-md shadow-rose-900/20'
                     : 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
                 }`}
