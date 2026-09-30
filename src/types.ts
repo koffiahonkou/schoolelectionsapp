@@ -52,7 +52,7 @@ export function getUserPermissions(account: UserAccount | null | undefined): Rol
 export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
   'Electoral Commissioner': {
     canConfigureElection: true,
-    canManageBallot: false, // Restricted strictly to Developer account
+    canManageBallot: true,
     canManageRoster: true,
     canChangePollStatus: true,
     canViewLiveTallies: true,

@@ -6,9 +6,16 @@ let firestoreDb: any = null;
 function getDb() {
   if (firestoreDb) return firestoreDb;
   try {
-    const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
-    if (fs.existsSync(configPath)) {
-      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    let config: any = null;
+    try {
+      config = require('../firebase-applet-config.json');
+    } catch {
+      const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+      if (fs.existsSync(configPath)) {
+        config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      }
+    }
+    if (config) {
       const { initializeApp, getApps, getApp } = require('firebase/app');
       const { getFirestore } = require('firebase/firestore');
       const app = getApps().length > 0 ? getApp() : initializeApp(config);
@@ -32,7 +39,7 @@ export default async function handler(req: any, res: any) {
 
   try {
     let electionPayload: any = null;
-    let electionStatus = 'Open';
+    let electionStatus = 'Setup';
 
     // 1. Try to fetch live canonical metadata from Firestore first
     try {
@@ -97,21 +104,21 @@ export default async function handler(req: any, res: any) {
         success: true,
         message: 'Election state acknowledged',
         data: req.body?.data || electionPayload,
-        status: req.body?.status || electionStatus || 'Open',
+        status: req.body?.status || electionStatus || 'Setup',
       });
     }
 
     return res.status(200).json({
       success: true,
       data: electionPayload,
-      status: electionStatus || 'Open',
+      status: electionStatus || 'Setup',
       timestamp: new Date().toISOString(),
     });
   } catch (err: any) {
     return res.status(200).json({
       success: true,
       message: 'Default election state fallback',
-      status: 'Open',
+      status: 'Setup',
       timestamp: new Date().toISOString(),
     });
   }

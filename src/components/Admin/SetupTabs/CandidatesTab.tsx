@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Candidate, Position, UserAccount } from '../../../types';
+import { Candidate, Position, UserAccount, getUserPermissions } from '../../../types';
 import { getCandidateColor, getCandidateInitials } from '../../../utils/avatar';
 import {
   Plus,
@@ -12,6 +12,8 @@ import {
   Filter,
   Image as ImageIcon,
   Lock,
+  Loader2,
+  Link as LinkIcon,
 } from 'lucide-react';
 import { ConfirmModal } from '../../Common/ConfirmModal';
 
@@ -36,8 +38,8 @@ export const CandidatesTab: React.FC<CandidatesTabProps> = ({
   onDeleteCandidate,
   onUnlockRequest,
 }) => {
-  const isDeveloper = currentUser?.role === 'Developer';
-  const canEdit = isDeveloper && !isLocked;
+  const permissions = getUserPermissions(currentUser);
+  const canEdit = (permissions.canManageBallot || currentUser?.role === 'Developer') && !isLocked;
 
   const [selectedPosFilter, setSelectedPosFilter] = useState<string>('ALL');
   const [isAdding, setIsAdding] = useState(false);
@@ -49,6 +51,8 @@ export const CandidatesTab: React.FC<CandidatesTabProps> = ({
   const [slogan, setSlogan] = useState('');
   const [manifesto, setManifesto] = useState('');
   const [photoUrl, setPhotoUrl] = useState('');
+  const [isPhotoProcessing, setIsPhotoProcessing] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
 
   const [deleteConfirmCand, setDeleteConfirmCand] = useState<Candidate | null>(null);
 
@@ -63,6 +67,8 @@ export const CandidatesTab: React.FC<CandidatesTabProps> = ({
     setSlogan('');
     setManifesto('');
     setPhotoUrl('');
+    setPhotoError(null);
+    setIsPhotoProcessing(false);
     setPositionId(positions[0]?.id || '');
     setEditingId(null);
     setIsAdding(true);
@@ -74,6 +80,8 @@ export const CandidatesTab: React.FC<CandidatesTabProps> = ({
     setSlogan(cand.slogan || '');
     setManifesto(cand.manifesto || '');
     setPhotoUrl(cand.photoUrl || '');
+    setPhotoError(null);
+    setIsPhotoProcessing(false);
     setPositionId(cand.positionId);
     setEditingId(cand.id);
     setIsAdding(true);
@@ -82,40 +90,59 @@ export const CandidatesTab: React.FC<CandidatesTabProps> = ({
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!canEdit) return;
     const file = e.target.files?.[0];
+    e.target.value = ''; // Reset so choosing same file works reliably
     if (!file) return;
 
-    // Read and compress image client side
+    if (file.size > 12 * 1024 * 1024) {
+      setPhotoError('Image file is too large. Please select a photo under 12MB.');
+      return;
+    }
+
+    setPhotoError(null);
+    setIsPhotoProcessing(true);
+
     const reader = new FileReader();
     reader.onload = (event) => {
       const img = new Image();
       img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX_SIZE = 320;
-        let width = img.width;
-        let height = img.height;
+        try {
+          const canvas = document.createElement('canvas');
+          const TARGET_SIZE = 240; // High definition 240x240 retina thumbnail
+          const width = img.width;
+          const height = img.height;
 
-        if (width > height) {
-          if (width > MAX_SIZE) {
-            height *= MAX_SIZE / width;
-            width = MAX_SIZE;
+          // Crop center square to prevent squishing or distortion
+          const minDim = Math.min(width, height);
+          const sx = (width - minDim) / 2;
+          const sy = (height - minDim) / 2;
+
+          canvas.width = TARGET_SIZE;
+          canvas.height = TARGET_SIZE;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, TARGET_SIZE, TARGET_SIZE);
           }
-        } else {
-          if (height > MAX_SIZE) {
-            width *= MAX_SIZE / height;
-            height = MAX_SIZE;
-          }
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+          setPhotoUrl(dataUrl);
+          setIsPhotoProcessing(false);
+        } catch {
+          setIsPhotoProcessing(false);
+          setPhotoError('Error optimizing image. Please try a different photo.');
         }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-        setPhotoUrl(dataUrl);
+      };
+      img.onerror = () => {
+        setIsPhotoProcessing(false);
+        setPhotoError('Could not decode image. Please select a standard JPG, PNG, or WebP file.');
       };
       if (event.target?.result) {
         img.src = event.target.result as string;
       }
+    };
+    reader.onerror = () => {
+      setIsPhotoProcessing(false);
+      setPhotoError('Failed to read file.');
     };
     reader.readAsDataURL(file);
   };
@@ -315,41 +342,86 @@ export const CandidatesTab: React.FC<CandidatesTabProps> = ({
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
               Candidate Photo (Optional)
             </label>
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
               {photoUrl ? (
-                <div className="relative">
+                <div className="relative shrink-0 w-16 h-16">
                   <img
                     src={photoUrl}
                     alt="Preview"
-                    className="w-16 h-16 rounded-2xl object-cover border-2 border-indigo-200"
+                    className="w-16 h-16 rounded-2xl object-cover border-2 border-indigo-200 shadow-xs"
                   />
                   <button
                     type="button"
-                    onClick={() => setPhotoUrl('')}
-                    className="absolute -top-2 -right-2 p-1 bg-rose-500 text-white rounded-full hover:bg-rose-600 shadow-sm"
+                    onClick={() => {
+                      setPhotoUrl('');
+                      setPhotoError(null);
+                    }}
+                    className="absolute -top-2 -right-2 p-1 bg-rose-500 text-white rounded-full hover:bg-rose-600 shadow-sm cursor-pointer"
+                    title="Remove photo"
                   >
                     <X className="w-3 h-3" />
                   </button>
                 </div>
               ) : (
-                <div className="w-16 h-16 rounded-2xl bg-slate-200 border-2 border-dashed border-slate-300 flex items-center justify-center text-slate-400">
-                  <ImageIcon className="w-6 h-6" />
+                <div className="w-16 h-16 rounded-2xl bg-slate-100 border-2 border-dashed border-slate-300 flex items-center justify-center text-slate-400 shrink-0">
+                  {isPhotoProcessing ? (
+                    <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
+                  ) : (
+                    <ImageIcon className="w-6 h-6" />
+                  )}
                 </div>
               )}
 
-              <label className="px-4 py-2 rounded-xl bg-white border border-slate-300 hover:bg-slate-50 text-xs font-bold text-slate-700 cursor-pointer flex items-center gap-2 transition-colors">
-                <Upload className="w-3.5 h-3.5 text-indigo-600" />
-                <span>Choose Photo</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handlePhotoUpload}
-                  className="hidden"
-                />
-              </label>
-              <span className="text-2xs text-slate-400">
-                Square JPG/PNG supported. Leave blank to use colorful avatar.
-              </span>
+              <div className="flex-1 space-y-2">
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <input
+                    type="file"
+                    id="candidate-photo-file-input"
+                    accept="image/png, image/jpeg, image/jpg, image/webp"
+                    onChange={handlePhotoUpload}
+                    className="sr-only"
+                  />
+                  <label
+                    htmlFor="candidate-photo-file-input"
+                    className="px-4 py-2 rounded-xl bg-white border border-slate-300 hover:bg-slate-50 text-xs font-bold text-slate-700 cursor-pointer flex items-center gap-2 transition-colors shadow-2xs"
+                  >
+                    {isPhotoProcessing ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600" />
+                        <span>Optimizing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>Choose Device Photo</span>
+                      </>
+                    )}
+                  </label>
+
+                  <span className="text-2xs text-slate-400">
+                    JPG/PNG/WebP automatically cropped to square portrait.
+                  </span>
+                </div>
+
+                {photoError && (
+                  <p className="text-xs text-rose-600 font-semibold">{photoError}</p>
+                )}
+
+                {/* Optional direct URL input */}
+                <div className="flex items-center gap-2">
+                  <LinkIcon className="w-3 h-3 text-slate-400 shrink-0" />
+                  <input
+                    type="url"
+                    value={photoUrl.startsWith('data:') ? '' : photoUrl}
+                    onChange={(e) => {
+                      setPhotoUrl(e.target.value.trim());
+                      setPhotoError(null);
+                    }}
+                    placeholder="Or paste direct image URL (https://...)"
+                    className="flex-1 px-2.5 py-1 text-xs rounded-lg border border-slate-200 bg-white text-slate-700 placeholder:text-slate-400 focus:border-indigo-500 outline-hidden"
+                  />
+                </div>
+              </div>
             </div>
           </div>
 

@@ -61,7 +61,7 @@ export default function App() {
   const [data, setData] = useState<ElectionData | null>(null);
   const [status, setStatus] = useState<ElectionStatus>(() => {
     const saved = loadStoredElectionStatus();
-    return saved || 'Open';
+    return saved || 'Setup';
   });
   const [isStatusChecked, setIsStatusChecked] = useState(false);
   const [currentView, setCurrentView] = useState<'booth' | 'admin' | 'results' | 'agents'>('booth');
@@ -358,14 +358,12 @@ export default function App() {
                 };
               });
 
-              // CRITICAL: Never let stale polling downgrade an active Open or Closed election back to 'Setup'
-              if (json.status) {
+              // Only update status from polling if Firestore cloud status is NOT verified
+              if (json.status && !cloudStatusVerified) {
                 setStatus((cur) => {
+                  const stored = loadStoredElectionStatus();
+                  if (stored) return stored; // Respect stored commissioner intent
                   if (cur === json.status) return cur;
-                  // If polls are Open, Closed, or Published, do not let polling revert to Setup
-                  if (cur !== 'Setup' && json.status === 'Setup') {
-                    return cur;
-                  }
                   saveStoredElectionStatus(json.status);
                   return json.status;
                 });
@@ -935,8 +933,9 @@ export default function App() {
   };
 
   const handleUpdatePositions = (positions: Position[]) => {
-    if (currentUser?.role !== 'Developer') {
-      console.warn('Unauthorized attempt to update positions by non-developer.');
+    const permissions = getUserPermissions(currentUser);
+    if (!permissions.canManageBallot && currentUser?.role !== 'Developer') {
+      console.warn('Unauthorized attempt to update positions.');
       return;
     }
     persistElectionData((prev) => ({
@@ -947,8 +946,9 @@ export default function App() {
   };
 
   const handleDeletePosition = (positionId: string) => {
-    if (currentUser?.role !== 'Developer') {
-      console.warn('Unauthorized attempt to delete position by non-developer.');
+    const permissions = getUserPermissions(currentUser);
+    if (!permissions.canManageBallot && currentUser?.role !== 'Developer') {
+      console.warn('Unauthorized attempt to delete position.');
       return;
     }
     persistElectionData((prev) => ({
@@ -960,8 +960,9 @@ export default function App() {
   };
 
   const handleAddCandidate = (cand: Candidate) => {
-    if (currentUser?.role !== 'Developer') {
-      console.warn('Unauthorized attempt to add candidate by non-developer.');
+    const permissions = getUserPermissions(currentUser);
+    if (!permissions.canManageBallot && currentUser?.role !== 'Developer') {
+      console.warn('Unauthorized attempt to add candidate.');
       return;
     }
     persistElectionData((prev) => ({
@@ -972,8 +973,9 @@ export default function App() {
   };
 
   const handleUpdateCandidate = (cand: Candidate) => {
-    if (currentUser?.role !== 'Developer') {
-      console.warn('Unauthorized attempt to update candidate by non-developer.');
+    const permissions = getUserPermissions(currentUser);
+    if (!permissions.canManageBallot && currentUser?.role !== 'Developer') {
+      console.warn('Unauthorized attempt to update candidate.');
       return;
     }
     persistElectionData((prev) => ({
@@ -984,8 +986,9 @@ export default function App() {
   };
 
   const handleDeleteCandidate = (candId: string) => {
-    if (currentUser?.role !== 'Developer') {
-      console.warn('Unauthorized attempt to delete candidate by non-developer.');
+    const permissions = getUserPermissions(currentUser);
+    if (!permissions.canManageBallot && currentUser?.role !== 'Developer') {
+      console.warn('Unauthorized attempt to delete candidate.');
       return;
     }
     persistElectionData((prev) => ({

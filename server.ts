@@ -25,18 +25,18 @@ try {
     const raw = fs.readFileSync(DATA_FILE, 'utf-8');
     const parsed = JSON.parse(raw);
     electionData = parsed.data || parsed;
-    electionStatus = parsed.status || 'Open';
+    electionStatus = parsed.status || 'Setup';
     console.log(`[Server] Loaded election data from disk: ${electionData.ballots.length} ballots recorded.`);
   } else {
     electionData = getDefaultElectionData();
-    electionStatus = 'Open';
+    electionStatus = 'Setup';
     saveElectionToDisk();
     console.log('[Server] Initialized fresh election dataset.');
   }
 } catch (err) {
   console.error('[Server] Failed to read existing data file, initializing defaults:', err);
   electionData = getDefaultElectionData();
-  electionStatus = 'Open';
+  electionStatus = 'Setup';
 }
 
 const GENESIS_HASH = '0000000000000000000000000000000000000000000000000000000000000000';

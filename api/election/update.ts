@@ -6,9 +6,16 @@ let firestoreDb: any = null;
 function getDb() {
   if (firestoreDb) return firestoreDb;
   try {
-    const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
-    if (fs.existsSync(configPath)) {
-      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    let config: any = null;
+    try {
+      config = require('../firebase-applet-config.json');
+    } catch {
+      const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+      if (fs.existsSync(configPath)) {
+        config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      }
+    }
+    if (config) {
       const { initializeApp, getApps, getApp } = require('firebase/app');
       const { getFirestore } = require('firebase/firestore');
       const app = getApps().length > 0 ? getApp() : initializeApp(config);
@@ -70,7 +77,7 @@ export default async function handler(req: any, res: any) {
       success: true,
       message: 'Election state updated successfully',
       data,
-      status: status || 'Open',
+      status: status || 'Setup',
       clientIp,
       actionDescription: actionDescription || 'Election state updated',
       actor: actor ? `${actor} (${actorRole || 'Staff'})` : 'Admin',

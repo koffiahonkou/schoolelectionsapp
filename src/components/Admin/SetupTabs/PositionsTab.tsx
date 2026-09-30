@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Candidate, Position, UserAccount } from '../../../types';
+import { Candidate, Position, UserAccount, getUserPermissions } from '../../../types';
 import {
   Plus,
   ArrowUp,
@@ -34,8 +34,8 @@ export const PositionsTab: React.FC<PositionsTabProps> = ({
   onDeletePosition,
   onUnlockRequest,
 }) => {
-  const isDeveloper = currentUser?.role === 'Developer';
-  const canEdit = isDeveloper && !isLocked;
+  const permissions = getUserPermissions(currentUser);
+  const canEdit = (permissions.canManageBallot || currentUser?.role === 'Developer') && !isLocked;
 
   const [isAdding, setIsAdding] = useState(false);
   const [editingPosId, setEditingPosId] = useState<string | null>(null);
