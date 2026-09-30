@@ -899,10 +899,13 @@ async function startServer() {
     electionStatus = 'Setup';
 
     // Record reset in audit log with IP and Actor
-    electionData.auditLogs[0].ipAddress = clientIp;
-    if (actor) {
-      electionData.auditLogs[0].actor = actor;
-    }
+    appendServerAuditLog({
+      eventType: 'settings_updated',
+      details: `Election Reset: "${title}" for "${school}"`,
+      category: 'security',
+      actor: actor || 'Admin',
+      ipAddress: clientIp,
+    });
 
     logIpActivity(req, `Election Reset: "${title}"`, 200, false, undefined, actor);
     saveElectionToDisk();
