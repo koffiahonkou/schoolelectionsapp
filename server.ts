@@ -45,7 +45,7 @@ async function syncWithFirestore() {
   try {
     const db = getDb();
     if (!db) return;
-    const { doc, getDoc } = require('firebase/firestore');
+    const { doc, getDoc, collection, getDocs } = require('firebase/firestore');
     const timeout = new Promise<null>((res) => setTimeout(() => res(null), 2500));
     const snap = await Promise.race([getDoc(doc(db, 'election_metadata', 'current')), timeout]);
     if (snap && snap.exists && snap.exists()) {
@@ -54,16 +54,52 @@ async function syncWithFirestore() {
         electionStatus = cloud.status;
       }
       if (cloud.config || cloud.positions) {
+        // Fetch votes from Firestore
+        const liveBallots: Ballot[] = [];
+        try {
+          const votesSnap = await getDocs(collection(db, 'votes'));
+          votesSnap.forEach((d: any) => {
+            const b = d.data();
+            liveBallots.push({
+              id: b.id || d.id,
+              choices: b.choices || {},
+              submittedAt: b.submittedAt || new Date().toISOString(),
+              isPractice: Boolean(b.isPractice),
+              evidenceHash: b.evidenceHash || undefined,
+            });
+          });
+        } catch (vErr) {
+          console.warn('[Server] Could not fetch votes from Firestore:', vErr);
+        }
+
+        // Fetch tokens to update voter hasVoted statuses
+        let voters = Array.isArray(cloud.voters) ? cloud.voters : electionData.voters;
+        try {
+          const tokensSnap = await getDocs(collection(db, 'voter_tokens'));
+          const tokenMap = new Map();
+          tokensSnap.forEach((d: any) => tokenMap.set(d.data().voterId?.toUpperCase(), d.data()));
+          voters = voters.map((v: Voter) => {
+            const t = tokenMap.get(v.voterId?.toUpperCase());
+            if (t && (t.hasVoted || t.status === 'used')) {
+              return { ...v, hasVoted: true, votedAt: t.votedAt || v.votedAt };
+            }
+            return v;
+          });
+        } catch (tErr) {
+          console.warn('[Server] Could not fetch tokens from Firestore:', tErr);
+        }
+
         electionData = {
           ...electionData,
           config: cloud.config ? { ...electionData.config, ...cloud.config } : electionData.config,
           positions: Array.isArray(cloud.positions) ? cloud.positions : electionData.positions,
           candidates: Array.isArray(cloud.candidates) ? cloud.candidates : electionData.candidates,
-          voters: Array.isArray(cloud.voters) ? cloud.voters : electionData.voters,
+          voters,
           accounts: Array.isArray(cloud.accounts) && cloud.accounts.length > 0 ? cloud.accounts : electionData.accounts,
+          ballots: liveBallots.length > 0 ? liveBallots : electionData.ballots,
         };
         saveElectionToDisk();
-        console.log(`[Server] Synchronized with Firestore: "${electionData.config.title}" (Status: ${electionStatus})`);
+        console.log(`[Server] Synchronized with Firestore: "${electionData.config.title}" (${electionData.ballots.length} ballots, Status: ${electionStatus})`);
       }
     }
   } catch (err: any) {
@@ -657,11 +693,14 @@ async function startServer() {
     });
   });
 
+  let lastServerSyncMs = 0;
+
   // GET current election state
   app.get('/api/election', async (req, res) => {
     logIpActivity(req, 'Fetch Election State', 200);
-    // If in-memory state still has default title, attempt sync with Firestore first
-    if (electionData.config.title === '2026 Student Representative Council Elections') {
+    // Periodically sync with Firestore so ballots, tokens, and poll status are always up to date
+    if (Date.now() - lastServerSyncMs > 3000) {
+      lastServerSyncMs = Date.now();
       await syncWithFirestore();
     }
     res.json({
@@ -719,7 +758,22 @@ async function startServer() {
     // Atomic execution inside mutex lock to handle simultaneous online votes
     try {
       const result = await voteQueueLock.acquire(async () => {
-        // 1. Check if polls are open
+        // 1. Check if polls are open (checking Firestore status if local state is not yet refreshed)
+        if (electionStatus !== 'Open' && !isPractice) {
+          try {
+            const db = getDb();
+            if (db) {
+              const { doc, getDoc } = require('firebase/firestore');
+              const metaSnap = await getDoc(doc(db, 'election_metadata', 'current'));
+              if (metaSnap.exists() && metaSnap.data().status === 'Open') {
+                electionStatus = 'Open';
+              }
+            }
+          } catch {
+            // ignore
+          }
+        }
+
         if (electionStatus !== 'Open' && !isPractice) {
           appendServerAuditLog({
             eventType: 'security_alert',
@@ -778,6 +832,7 @@ async function startServer() {
             };
           }
 
+          // Strict double-voting check in memory
           if (targetVoter && targetVoter.hasVoted) {
             appendServerAuditLog({
               eventType: 'security_alert',
@@ -803,6 +858,44 @@ async function startServer() {
                 error: `This Student ID (${normalizedId}) has already cast an official ballot in this election.`,
               },
             };
+          }
+
+          // Strict double-voting check in Firestore voter_tokens
+          try {
+            const db = getDb();
+            if (db) {
+              const { doc, getDoc } = require('firebase/firestore');
+              const cleanId = normalizedId.replace(/[^A-Z0-9_-]/g, '_');
+              const tokenSnap = await getDoc(doc(db, 'voter_tokens', `token-${cleanId}`));
+              if (tokenSnap.exists()) {
+                const tokenData = tokenSnap.data();
+                if (tokenData.hasVoted || tokenData.status === 'used') {
+                  if (targetVoter) {
+                    targetVoter.hasVoted = true;
+                    targetVoter.votedAt = tokenData.votedAt || new Date().toISOString();
+                  }
+                  saveElectionToDisk();
+                  appendServerAuditLog({
+                    eventType: 'security_alert',
+                    category: 'security',
+                    details: `EVIDENTIARY DOUBLE-VOTING ALERT (Cloud Verified): Student ID "${normalizedId}" attempted duplicate vote. Blocked.`,
+                    actor: `Student Voter (${normalizedId})`,
+                    actorRole: 'Voter',
+                    ipAddress: clientIp,
+                    metadata: { studentId: normalizedId, originalVotedAt: tokenData.votedAt },
+                  });
+                  return {
+                    status: 409,
+                    body: {
+                      success: false,
+                      error: `This Student ID (${normalizedId}) has already cast an official ballot in this election.`,
+                    },
+                  };
+                }
+              }
+            }
+          } catch {
+            // ignore
           }
 
           // Check PIN if required by config
@@ -887,6 +980,59 @@ async function startServer() {
         // 6. Save immediately to disk
         saveElectionToDisk();
 
+        // 7. Directly mirror anonymous vote and used token into Firestore from server
+        try {
+          const db = getDb();
+          if (db) {
+            const { doc, setDoc, updateDoc, getDoc } = require('firebase/firestore');
+            // Write anonymous ballot
+            await setDoc(doc(db, 'votes', newBallot.id), {
+              id: newBallot.id,
+              choices: newBallot.choices,
+              submittedAt: newBallot.submittedAt,
+              isPractice: Boolean(newBallot.isPractice),
+              clientTimestamp: Date.now(),
+            });
+
+            if (!isPractice && voterId) {
+              const cleanId = voterId.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '_');
+              // Mark token used
+              await setDoc(
+                doc(db, 'voter_tokens', `token-${cleanId}`),
+                {
+                  id: `token-${cleanId}`,
+                  voterId: voterId.trim().toUpperCase(),
+                  hasVoted: true,
+                  votedAt: newBallot.submittedAt,
+                  status: 'used',
+                },
+                { merge: true }
+              );
+
+              // Update election_metadata voter array
+              try {
+                const metaRef = doc(db, 'election_metadata', 'current');
+                const metaSnap = await getDoc(metaRef);
+                if (metaSnap.exists()) {
+                  const meta = metaSnap.data();
+                  if (Array.isArray(meta.voters)) {
+                    const updatedVoters = meta.voters.map((v: any) =>
+                      v.voterId?.trim().toUpperCase() === voterId.trim().toUpperCase()
+                        ? { ...v, hasVoted: true, votedAt: newBallot.submittedAt }
+                        : v
+                    );
+                    await updateDoc(metaRef, { voters: updatedVoters, lastUpdated: new Date().toISOString() });
+                  }
+                }
+              } catch {
+                // ignore
+              }
+            }
+          }
+        } catch (mirrorErr) {
+          console.warn('[Server] Firestore vote mirror warning:', mirrorErr);
+        }
+
         return {
           status: 200,
           body: {
@@ -913,6 +1059,27 @@ async function startServer() {
     const clientIp = getClientIp(req);
 
     if (updatedData) {
+      // PRESERVE voters who have already voted
+      if (Array.isArray(updatedData.voters)) {
+        updatedData.voters = updatedData.voters.map((v: Voter) => {
+          const existing = electionData.voters.find(
+            (ev) => ev.voterId.toUpperCase() === v.voterId.toUpperCase()
+          );
+          if (existing?.hasVoted && !v.hasVoted) {
+            return { ...v, hasVoted: true, votedAt: existing.votedAt || new Date().toISOString() };
+          }
+          return v;
+        });
+      }
+      // PRESERVE ballots by ID so cast votes are never wiped
+      if (Array.isArray(updatedData.ballots)) {
+        const bMap = new Map<string, Ballot>();
+        (electionData.ballots || []).forEach((b) => bMap.set(b.id, b));
+        (updatedData.ballots || []).forEach((b) => bMap.set(b.id, b));
+        updatedData.ballots = Array.from(bMap.values());
+      } else {
+        updatedData.ballots = electionData.ballots;
+      }
       electionData = updatedData;
     }
     if (updatedStatus) {

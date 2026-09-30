@@ -26,6 +26,11 @@ import {
   downloadJSON,
   saveStoredElectionStatus,
   loadStoredElectionStatus,
+  getLocallyVotedVoterIds,
+  markVoterLocallyVoted,
+  isVoterLocallyMarkedVoted,
+  resetVoterLocallyVoted,
+  clearAllLocallyVoted,
 } from './utils/storage';
 import { createChainedAuditEntry } from './utils/cryptoAudit';
 import { DEFAULT_USER_ACCOUNTS } from './utils/defaultData';
@@ -54,6 +59,12 @@ import {
   saveElectionStateToFirestore,
   getElectionMetadataFromFirestore,
   subscribeToElectionMetadata,
+  subscribeToAnonymousVotes,
+  subscribeToVoterTokens,
+  fetchAnonymousVotesOnce,
+  fetchVoterTokensOnce,
+  checkVoterTokenInFirestore,
+  resetVoterTokenInFirestore,
 } from './lib/firebaseVoting';
 import { fetchWithBackoff, postJsonWithBackoff } from './utils/apiRetry';
 
@@ -223,12 +234,54 @@ export default function App() {
               ? localData.candidates
               : (Array.isArray(cloudMeta.candidates) ? cloudMeta.candidates : (localData?.candidates || []));
 
+            // Fetch live ballots and tokens from Firestore so results and roster are accurate immediately
+            let cloudBallots: Ballot[] = [];
+            let cloudTokens: any[] = [];
+            try {
+              const [bRes, tRes] = await Promise.race([
+                Promise.all([fetchAnonymousVotesOnce(), fetchVoterTokensOnce()]),
+                new Promise<[Ballot[], any[]]>((r) => setTimeout(() => r([[], []]), 2500)),
+              ]);
+              cloudBallots = bRes;
+              cloudTokens = tRes;
+            } catch (fetchErr) {
+              console.warn('[Firebase] Could not fetch initial votes/tokens:', fetchErr);
+            }
+
+            // Sync token participation with voter roster across tokens, metadata, and local cache
+            const tokenMap = new Map(cloudTokens.map((t) => [t.voterId?.toUpperCase(), t]));
+            const localVotedIds = getLocallyVotedVoterIds();
+            const finalizedVoters = mergedVoters.map((v) => {
+              const token = tokenMap.get(v.voterId.toUpperCase());
+              const isTokenVoted = token && (token.hasVoted || token.status === 'used');
+              const isLocalVoted = localVotedIds.has(v.voterId.toUpperCase());
+              const isPrevVoted = localData?.voters?.some(
+                (lv) => lv.voterId.toUpperCase() === v.voterId.toUpperCase() && lv.hasVoted
+              );
+
+              if (v.hasVoted || isTokenVoted || isLocalVoted || isPrevVoted) {
+                markVoterLocallyVoted(v.voterId);
+                return {
+                  ...v,
+                  hasVoted: true,
+                  votedAt: token?.votedAt || v.votedAt || new Date().toISOString(),
+                };
+              }
+              return v;
+            });
+
+            // Merge cloud ballots and local ballots by unique ID so cast votes are never dropped
+            const ballotMap = new Map<string, Ballot>();
+            (localData?.ballots || []).forEach((b) => ballotMap.set(b.id, b));
+            cloudBallots.forEach((b) => ballotMap.set(b.id, b));
+            const mergedBallots = Array.from(ballotMap.values());
+
             const cloudData: ElectionData = {
               config: mergedConfig,
               positions: mergedPositions,
               candidates: mergedCandidates,
-              voters: mergedVoters,
-              ballots: cloudMeta.status === 'Setup' ? [] : (localData?.ballots || []),
+              voters: finalizedVoters,
+              ballots: mergedBallots,
               auditLogs: localData?.auditLogs && localData.auditLogs.length > 0 ? localData.auditLogs : fallback.auditLogs,
               accounts: baseAccounts,
             };
@@ -298,18 +351,89 @@ export default function App() {
       if (Array.isArray(meta.positions) && Array.isArray(meta.candidates)) {
         setData((prev) => {
           if (!prev) return prev;
+          const rawVoters = Array.isArray(meta.voters) ? meta.voters : prev.voters;
+          const localVotedIds = getLocallyVotedVoterIds();
+          const mergedVoters = rawVoters.map((v) => {
+            const prevV = prev.voters?.find((pv) => pv.voterId.toUpperCase() === v.voterId.toUpperCase());
+            const isLocal = localVotedIds.has(v.voterId.toUpperCase());
+            if (v.hasVoted || prevV?.hasVoted || isLocal) {
+              markVoterLocallyVoted(v.voterId);
+              return {
+                ...v,
+                hasVoted: true,
+                votedAt: prevV?.votedAt || v.votedAt || new Date().toISOString(),
+              };
+            }
+            return v;
+          });
+
           const updated: ElectionData = {
             ...prev,
             config: meta.config ? { ...prev.config, ...meta.config } : prev.config,
             positions: meta.positions,
             candidates: meta.candidates,
-            voters: Array.isArray(meta.voters) ? meta.voters : prev.voters,
+            voters: mergedVoters,
             accounts: (Array.isArray(meta.accounts) && meta.accounts.length > 0) ? meta.accounts : prev.accounts,
           };
           saveElectionData(updated).catch(() => {});
           return updated;
         });
       }
+    });
+
+    // Real-time Firestore votes listener:
+    // When a voter deposits a ballot on any station, all devices immediately reflect the new vote!
+    const unsubscribeVotes = subscribeToAnonymousVotes((cloudBallots) => {
+      if (!isMounted) return;
+      setData((prev) => {
+        if (!prev) return prev;
+        const ballotMap = new Map<string, Ballot>();
+        (prev.ballots || []).forEach((b) => ballotMap.set(b.id, b));
+        cloudBallots.forEach((b) => ballotMap.set(b.id, b));
+        const mergedBallots = Array.from(ballotMap.values());
+
+        if (mergedBallots.length === prev.ballots.length) return prev;
+
+        const updated: ElectionData = {
+          ...prev,
+          ballots: mergedBallots,
+        };
+        saveElectionData(updated).catch(() => {});
+        return updated;
+      });
+    });
+
+    // Real-time Firestore voter tokens listener:
+    // When a voter's token is marked used, all devices instantly see "Voted" on the roster!
+    const unsubscribeTokens = subscribeToVoterTokens((tokens) => {
+      if (!isMounted) return;
+      setData((prev) => {
+        if (!prev) return prev;
+        const tokenMap = new Map(tokens.map((t) => [t.voterId.toUpperCase(), t]));
+        let hasChanges = false;
+        const updatedVoters = prev.voters.map((v) => {
+          const token = tokenMap.get(v.voterId.toUpperCase());
+          if (token && (token.hasVoted || token.status === 'used')) {
+            markVoterLocallyVoted(v.voterId);
+            if (!v.hasVoted) {
+              hasChanges = true;
+              return {
+                ...v,
+                hasVoted: true,
+                votedAt: token.votedAt || v.votedAt || new Date().toISOString(),
+              };
+            }
+          }
+          return v;
+        });
+        if (!hasChanges) return prev;
+        const updated: ElectionData = {
+          ...prev,
+          voters: updatedVoters,
+        };
+        saveElectionData(updated).catch(() => {});
+        return updated;
+      });
     });
 
     // 2. Periodic sync with backoff for server endpoints
@@ -357,10 +481,30 @@ export default function App() {
                   return prev;
                 }
 
-                // Preserve existing voters if user has loaded or imported records
-                const currentVoters = (prev.voters && prev.voters.length > 0 && (!json.data.voters || json.data.voters.length === 0))
-                  ? prev.voters
-                  : (json.data.voters || []);
+                // Merge ballots by ID: Never overwrite or lose cast ballots
+                const ballotMap = new Map<string, Ballot>();
+                (prev.ballots || []).forEach((b) => ballotMap.set(b.id, b));
+                (json.data.ballots || []).forEach((b) => ballotMap.set(b.id, b));
+                const mergedBallots = Array.from(ballotMap.values());
+
+                // Merge voters: Preserve existing voters and never downgrade hasVoted from true to false
+                const sourceVoters = (json.data.voters && json.data.voters.length > 0)
+                  ? json.data.voters
+                  : (prev.voters || []);
+                const localVotedIds = getLocallyVotedVoterIds();
+                const mergedVoters = sourceVoters.map((v: Voter) => {
+                  const prevV = prev.voters?.find((pv) => pv.voterId.toUpperCase() === v.voterId.toUpperCase());
+                  const isLocal = localVotedIds.has(v.voterId.toUpperCase());
+                  if (v.hasVoted || prevV?.hasVoted || isLocal) {
+                    markVoterLocallyVoted(v.voterId);
+                    return {
+                      ...v,
+                      hasVoted: true,
+                      votedAt: prevV?.votedAt || v.votedAt || new Date().toISOString(),
+                    };
+                  }
+                  return v;
+                });
 
                 return {
                   ...prev,
@@ -373,7 +517,8 @@ export default function App() {
                       },
                   positions: (apiHasSetup && !isApiDefault) ? json.data.positions : (prev.positions || []),
                   candidates: (json.data.candidates && json.data.candidates.length > 0 && !isApiDefault) ? json.data.candidates : (prev.candidates || []),
-                  voters: currentVoters,
+                  voters: mergedVoters,
+                  ballots: mergedBallots,
                   accounts: (json.data.accounts && json.data.accounts.length > 0) ? json.data.accounts : (prev.accounts && prev.accounts.length > 0 ? prev.accounts : DEFAULT_USER_ACCOUNTS),
                 };
               });
@@ -409,6 +554,8 @@ export default function App() {
       isMounted = false;
       if (pollTimer) clearTimeout(pollTimer);
       unsubscribeMeta();
+      unsubscribeVotes();
+      unsubscribeTokens();
     };
   }, []);
 
@@ -669,15 +816,38 @@ export default function App() {
   const handleConfirmSubmitVote = async () => {
     if (!data || !activeVoter) return;
 
-    // Client-side quick check
+    // Multi-layer double-voting guard: local storage cache, in-memory roster, and Firestore
     if (!isPractice) {
+      const isAlreadyVotedLocally = isVoterLocallyMarkedVoted(activeVoter.voterId);
       const currentVoterRecord = data.voters.find(
         (v) => v.voterId.toUpperCase() === activeVoter.voterId.toUpperCase()
       );
-      if (currentVoterRecord?.hasVoted) {
-        alert('This student ID has already cast a vote in this election.');
+      if (currentVoterRecord?.hasVoted || isAlreadyVotedLocally) {
+        logAuditEvent(
+          'security_alert',
+          `DOUBLE-VOTING BLOCKED: Student ID "${activeVoter.voterId}" attempted to cast a duplicate ballot. Attempt blocked.`,
+          'security',
+          { actor: `Student ID: ${activeVoter.voterId}`, actorRole: 'Voter' }
+        );
         handleCancelVoterSession();
         return;
+      }
+
+      try {
+        const tokenCheck = await checkVoterTokenInFirestore(activeVoter.voterId);
+        if (tokenCheck.hasVoted) {
+          markVoterLocallyVoted(activeVoter.voterId);
+          logAuditEvent(
+            'security_alert',
+            `DOUBLE-VOTING BLOCKED (Firestore verified): Student ID "${activeVoter.voterId}" attempted to cast a duplicate ballot. Attempt blocked.`,
+            'security',
+            { actor: `Student ID: ${activeVoter.voterId}`, actorRole: 'Voter' }
+          );
+          handleCancelVoterSession();
+          return;
+        }
+      } catch (checkErr) {
+        console.warn('Real-time token check warning:', checkErr);
       }
     }
 
@@ -696,37 +866,61 @@ export default function App() {
           passcode: pin,
           choices: pendingChoices,
           isPractice,
+          captchaVerified: true,
         }),
       });
 
       const resData = await response.json();
 
       if (!response.ok || !resData.success) {
-        const errorMsg = resData.error || 'Failed to submit ballot online.';
-        alert(errorMsg);
         setIsSubmittingVote(false);
         if (response.status === 409) {
+          if (!isPractice && voterId) markVoterLocallyVoted(voterId);
           handleCancelVoterSession();
         }
         return;
       }
 
+      // Mark locally voted immediately to guarantee no second ballot can be cast
+      if (!isPractice && voterId) {
+        markVoterLocallyVoted(voterId);
+      }
+
       // Live state successfully updated on online server
       if (resData.data) {
-        setData(resData.data);
-        saveElectionData(resData.data).catch(() => {});
-        // Synchronize anonymous vote to Firestore and update voter token
         const castBallot = resData.data.ballots[resData.data.ballots.length - 1];
         if (castBallot) {
-          saveAnonymousVoteToFirestore(castBallot).catch((err) =>
+          await saveAnonymousVoteToFirestore(castBallot).catch((err) =>
             console.warn('[Firebase] Firestore vote sync warning:', err)
           );
         }
         if (!isPractice && voterId) {
-          markVoterTokenUsedInFirestore(voterId).catch((err) =>
+          await markVoterTokenUsedInFirestore(voterId).catch((err) =>
             console.warn('[Firebase] Firestore token sync warning:', err)
           );
         }
+
+        setData((prev) => {
+          if (!prev) return resData.data;
+          const ballotMap = new Map<string, Ballot>();
+          (prev.ballots || []).forEach((b) => ballotMap.set(b.id, b));
+          (resData.data.ballots || []).forEach((b: Ballot) => ballotMap.set(b.id, b));
+          const mergedBallots = Array.from(ballotMap.values());
+
+          const mergedVoters = (resData.data.voters || prev.voters || []).map((v: Voter) =>
+            v.voterId.toUpperCase() === voterId.toUpperCase()
+              ? { ...v, hasVoted: true, votedAt: castBallot?.submittedAt || new Date().toISOString() }
+              : v
+          );
+
+          const updated: ElectionData = {
+            ...resData.data,
+            ballots: mergedBallots,
+            voters: mergedVoters,
+          };
+          saveElectionData(updated).catch(() => {});
+          return updated;
+        });
       } else {
         // Online serverless confirmation (e.g. Vercel /api/vote)
         const newBallot: Ballot = {
@@ -737,11 +931,11 @@ export default function App() {
         };
 
         // Synchronize anonymous vote to Firestore and update voter token
-        saveAnonymousVoteToFirestore(newBallot).catch((err) =>
+        await saveAnonymousVoteToFirestore(newBallot).catch((err) =>
           console.warn('[Firebase] Firestore vote sync warning:', err)
         );
         if (!isPractice && voterId) {
-          markVoterTokenUsedInFirestore(voterId).catch((err) =>
+          await markVoterTokenUsedInFirestore(voterId, newBallot.submittedAt).catch((err) =>
             console.warn('[Firebase] Firestore token sync warning:', err)
           );
         }
@@ -755,7 +949,10 @@ export default function App() {
                   : v
               );
 
-          const updatedBallots = [...prev.ballots, newBallot];
+          const ballotMap = new Map<string, Ballot>();
+          (prev.ballots || []).forEach((b) => ballotMap.set(b.id, b));
+          ballotMap.set(newBallot.id, newBallot);
+          const updatedBallots = Array.from(ballotMap.values());
 
           const auditEntry = createChainedAuditEntry(prev.auditLogs, {
             eventType: 'ballot_submitted',
@@ -786,6 +983,10 @@ export default function App() {
     } catch (networkErr) {
       console.warn('Online server unreachable, processing with local fallback:', networkErr);
 
+      if (!isPractice && voterId) {
+        markVoterLocallyVoted(voterId);
+      }
+
       // Local Fallback (if server unreachable or strictly offline)
       const newBallot: Ballot = {
         id: 'bal-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
@@ -795,11 +996,11 @@ export default function App() {
       };
 
       // Synchronize anonymous vote to Firestore and update voter token
-      saveAnonymousVoteToFirestore(newBallot).catch((err) =>
+      await saveAnonymousVoteToFirestore(newBallot).catch((err) =>
         console.warn('[Firebase] Firestore vote fallback sync warning:', err)
       );
       if (!isPractice && voterId) {
-        markVoterTokenUsedInFirestore(voterId).catch((err) =>
+        await markVoterTokenUsedInFirestore(voterId, newBallot.submittedAt).catch((err) =>
           console.warn('[Firebase] Firestore token sync warning:', err)
         );
       }
@@ -813,7 +1014,10 @@ export default function App() {
                 : v
             );
 
-        const updatedBallots = [...prev.ballots, newBallot];
+        const ballotMap = new Map<string, Ballot>();
+        (prev.ballots || []).forEach((b) => ballotMap.set(b.id, b));
+        ballotMap.set(newBallot.id, newBallot);
+        const updatedBallots = Array.from(ballotMap.values());
 
         const auditEntry = createChainedAuditEntry(prev.auditLogs, {
           eventType: 'ballot_submitted',
@@ -1028,10 +1232,19 @@ export default function App() {
   };
 
   const handleResetVoterStatus = (voterId: string) => {
+    const target = data?.voters.find(
+      (v) => v.id === voterId || v.voterId.toUpperCase() === voterId.toUpperCase()
+    );
+    if (target) {
+      resetVoterLocallyVoted(target.voterId);
+      resetVoterTokenInFirestore(target.voterId).catch(() => {});
+    }
     persistElectionData((prev) => ({
       ...prev,
       voters: prev.voters.map((v) =>
-        v.id === voterId ? { ...v, hasVoted: false, votedAt: null } : v
+        v.id === voterId || v.voterId.toUpperCase() === voterId.toUpperCase()
+          ? { ...v, hasVoted: false, votedAt: null }
+          : v
       ),
     }));
     logAuditEvent('roster_modified', `Reset hasVoted status for student in roster.`, 'roster');
@@ -1039,6 +1252,7 @@ export default function App() {
 
   const handleStartNewElection = async (clearRoster: boolean, isFullSystemWipe = false) => {
     const actor = currentUser?.fullName || 'Admin';
+    clearAllLocallyVoted();
 
     const empty = createEmptyElectionData(
       isFullSystemWipe ? 'New Student Election' : (data?.config.title || 'New Student Election'),

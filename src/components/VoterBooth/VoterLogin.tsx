@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { ElectionConfig, ElectionStatus, Voter } from '../../types';
 import { validateVoterLogin } from '../../utils/normalization';
+import { checkVoterTokenInFirestore } from '../../lib/firebaseVoting';
+import { isVoterLocallyMarkedVoted } from '../../utils/storage';
 import { sounds } from '../../utils/audio';
 import { ElectionClock } from '../Common/ElectionClock';
 import { SchoolLogo } from '../Common/SchoolLogo';
@@ -23,6 +25,7 @@ import {
   CheckCircle2,
   BarChart3,
   Lock,
+  RefreshCw,
 } from 'lucide-react';
 
 interface VoterLoginProps {
@@ -59,6 +62,7 @@ export const VoterLogin: React.FC<VoterLoginProps> = ({
   const [pinInput, setPinInput] = useState('');
   const [showPin, setShowPin] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
   const [isCaptchaVerified, setIsCaptchaVerified] = useState(config.enableCaptcha === false);
   const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
   const [scannedBadgeInfo, setScannedBadgeInfo] = useState<{ voterId: string; name?: string } | null>(null);
@@ -80,7 +84,7 @@ export const VoterLogin: React.FC<VoterLoginProps> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
@@ -181,6 +185,58 @@ export const VoterLogin: React.FC<VoterLoginProps> = ({
         }
       );
       return;
+    }
+
+    // Local permanent double-voting barrier (cross-session & cross-refresh)
+    if (!isPractice && validation.voter && isVoterLocallyMarkedVoted(validation.voter.voterId)) {
+      const msg = `This Voter ID (${validation.voter.voterId}) has already cast an official ballot. Only one ballot is permitted per student.`;
+      setErrorMessage(msg);
+      sounds.playError();
+      onAuditLog?.(
+        'security_alert',
+        `DOUBLE-VOTING BLOCKED (Local Barrier): Student ID "${validation.voter.voterId}" attempted duplicate booth entry.`,
+        'security',
+        {
+          actor: `Student ID: ${validation.voter.voterId}`,
+          actorRole: 'Voter',
+          metadata: { studentId: validation.voter.voterId },
+        }
+      );
+      return;
+    }
+
+    // Real-time Firestore Token Verification to strictly prevent double voting
+    if (!isPractice && validation.voter) {
+      setIsVerifying(true);
+      try {
+        const tokenCheck = await checkVoterTokenInFirestore(validation.voter.voterId);
+        if (tokenCheck.hasVoted) {
+          const formattedDate = tokenCheck.votedAt
+            ? new Date(tokenCheck.votedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            : '';
+          const msg = `This Voter ID has already cast an official ballot${
+            formattedDate ? ` at ${formattedDate}` : ''
+          }. Only one ballot is permitted per student.`;
+          setErrorMessage(msg);
+          sounds.playError();
+          onAuditLog?.(
+            'security_alert',
+            `EVIDENTIARY DOUBLE-VOTING BLOCKED: Student ID "${validation.voter.voterId}" attempted duplicate booth entry. Token marked used in database.`,
+            'security',
+            {
+              actor: `Student ID: ${validation.voter.voterId}`,
+              actorRole: 'Voter',
+              metadata: { studentId: validation.voter.voterId, originalVotedAt: tokenCheck.votedAt },
+            }
+          );
+          setIsVerifying(false);
+          return;
+        }
+      } catch (err) {
+        console.warn('Real-time token check warning:', err);
+      } finally {
+        setIsVerifying(false);
+      }
     }
 
     if (validation.voter) {
@@ -501,13 +557,21 @@ export const VoterLogin: React.FC<VoterLoginProps> = ({
           <button
             id="voter-login-submit-btn"
             type="submit"
+            disabled={isVerifying}
             className={`w-full mt-2 py-4 px-6 rounded-2xl active:scale-[0.98] font-black text-base shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              isVerifying ? 'opacity-80 cursor-wait' : ''
+            } ${
               status === 'Results Published' && !isPractice
                 ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
                 : 'bg-amber-500 hover:bg-amber-600 text-slate-950'
             }`}
           >
-            {status === 'Results Published' && !isPractice ? (
+            {isVerifying ? (
+              <>
+                <RefreshCw className="w-5 h-5 animate-spin" />
+                <span>Verifying Security Clearance...</span>
+              </>
+            ) : status === 'Results Published' && !isPractice ? (
               <>
                 <BarChart3 className="w-5 h-5" />
                 <span>Log In to View Official Results</span>

@@ -45,7 +45,7 @@ export default async function handler(req: any, res: any) {
     try {
       const db = getDb();
       if (db) {
-        const { doc, getDoc } = require('firebase/firestore');
+        const { doc, getDoc, collection, getDocs } = require('firebase/firestore');
         const timeoutPromise = new Promise<null>((r) => setTimeout(() => r(null), 2500));
         const snapPromise = getDoc(doc(db, 'election_metadata', 'current'));
         const snap = await Promise.race([snapPromise, timeoutPromise]);
@@ -55,13 +55,48 @@ export default async function handler(req: any, res: any) {
             electionStatus = cloud.status;
           }
           if (cloud.positions || cloud.candidates || cloud.config) {
+            // Fetch live votes from Firestore 'votes' collection
+            const ballots: any[] = [];
+            try {
+              const votesSnap = await getDocs(collection(db, 'votes'));
+              votesSnap.forEach((d: any) => {
+                const b = d.data();
+                ballots.push({
+                  id: b.id || d.id,
+                  choices: b.choices || {},
+                  submittedAt: b.submittedAt || new Date().toISOString(),
+                  isPractice: Boolean(b.isPractice),
+                  evidenceHash: b.evidenceHash || undefined,
+                });
+              });
+            } catch (vErr) {
+              console.warn('Could not fetch votes in api/election:', vErr);
+            }
+
+            // Fetch live voter token records to guarantee accurate participation on roster
+            let voters = cloud.voters || [];
+            try {
+              const tokensSnap = await getDocs(collection(db, 'voter_tokens'));
+              const tokenMap = new Map();
+              tokensSnap.forEach((d: any) => tokenMap.set(d.data().voterId?.toUpperCase(), d.data()));
+              voters = voters.map((v: any) => {
+                const t = tokenMap.get(v.voterId?.toUpperCase());
+                if (t && (t.hasVoted || t.status === 'used')) {
+                  return { ...v, hasVoted: true, votedAt: t.votedAt || v.votedAt };
+                }
+                return v;
+              });
+            } catch (tErr) {
+              console.warn('Could not fetch tokens in api/election:', tErr);
+            }
+
             electionPayload = {
               config: cloud.config,
               positions: cloud.positions || [],
               candidates: cloud.candidates || [],
-              voters: cloud.voters || [],
+              voters,
               accounts: cloud.accounts || [],
-              ballots: [],
+              ballots,
               auditLogs: [],
             };
           }
@@ -99,11 +134,9 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    // Ensure that if election is in Setup mode, no previous ballots or test votes are returned
-    if (electionPayload) {
-      if (electionStatus === 'Setup' || !electionPayload.ballots) {
-        electionPayload.ballots = [];
-      }
+    // Ensure ballots array is always defined
+    if (electionPayload && !electionPayload.ballots) {
+      electionPayload.ballots = [];
     }
 
     if (req.method === 'POST') {

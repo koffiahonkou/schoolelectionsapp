@@ -138,283 +138,283 @@
     ],
     "voters": [
       {
-        "id": "voter-1790740725312-alec1-1",
-        "votedAt": null,
+        "fullName": "Jordan Taylor",
         "voterId": "STU101",
-        "hasVoted": false,
         "pin": "AB000001",
-        "fullName": "Jordan Taylor"
+        "votedAt": null,
+        "id": "voter-1790740725312-alec1-1",
+        "hasVoted": false
       },
       {
+        "pin": "AB000002",
+        "votedAt": null,
         "fullName": "Alex Rivera",
         "id": "voter-1790740725312-2c3rs-2",
-        "voterId": "STU103",
-        "votedAt": null,
-        "pin": "AB000002",
-        "hasVoted": false
+        "hasVoted": false,
+        "voterId": "STU103"
       },
       {
         "hasVoted": false,
-        "pin": "AB000003",
-        "votedAt": null,
-        "fullName": "Kwame Asante",
         "voterId": "STU104",
-        "id": "voter-1790740725312-fotjv-3"
-      },
-      {
-        "id": "voter-1790740725312-3ygxh-4",
-        "hasVoted": false,
-        "fullName": "Fatima Zahra",
-        "pin": "AB000004",
-        "voterId": "STU105",
+        "pin": "AB000003",
+        "id": "voter-1790740725312-fotjv-3",
+        "fullName": "Kwame Asante",
         "votedAt": null
       },
       {
-        "id": "voter-1790740725312-1akxw-5",
+        "pin": "AB000004",
+        "votedAt": null,
+        "hasVoted": false,
+        "id": "voter-1790740725312-3ygxh-4",
+        "voterId": "STU105",
+        "fullName": "Fatima Zahra"
+      },
+      {
         "fullName": "Brandon Lee",
         "voterId": "STU106",
+        "pin": "AB000005",
+        "id": "voter-1790740725312-1akxw-5",
         "votedAt": null,
-        "hasVoted": false,
-        "pin": "AB000005"
+        "hasVoted": false
       },
       {
-        "id": "voter-1790740725312-mydw4-6",
-        "fullName": "Priya Sharma",
-        "votedAt": null,
         "voterId": "STU107",
         "pin": "AB000006",
-        "hasVoted": false
+        "id": "voter-1790740725312-mydw4-6",
+        "hasVoted": false,
+        "votedAt": null,
+        "fullName": "Priya Sharma"
       },
       {
+        "votedAt": null,
+        "fullName": "Noah Williams",
         "pin": "AB000007",
         "voterId": "STU108",
-        "votedAt": null,
         "hasVoted": false,
-        "id": "voter-1790740725312-ligkq-7",
-        "fullName": "Noah Williams"
+        "id": "voter-1790740725312-ligkq-7"
       },
       {
-        "id": "voter-1790740725312-wix8y-8",
+        "fullName": "Zoe Martinez",
         "votedAt": null,
         "voterId": "STU109",
-        "hasVoted": false,
         "pin": "AB000008",
-        "fullName": "Zoe Martinez"
+        "id": "voter-1790740725312-wix8y-8",
+        "hasVoted": false
       },
       {
+        "votedAt": null,
+        "hasVoted": false,
         "voterId": "STU110",
-        "votedAt": null,
-        "hasVoted": false,
+        "fullName": "David Kim",
         "id": "voter-1790740725312-t6z5u-9",
-        "pin": "AB000009",
-        "fullName": "David Kim"
+        "pin": "AB000009"
       },
       {
-        "hasVoted": false,
-        "votedAt": null,
+        "id": "voter-1790740725312-jnx6h-10",
         "voterId": "STU111",
         "fullName": "Aisha Bello",
-        "id": "voter-1790740725312-jnx6h-10",
-        "pin": "AB000010"
+        "votedAt": null,
+        "pin": "AB000010",
+        "hasVoted": false
       },
       {
         "hasVoted": false,
-        "fullName": "Ethan Murphy",
-        "id": "voter-1790740725313-rme9k-11",
-        "pin": "AB000011",
         "voterId": "STU112",
-        "votedAt": null
+        "id": "voter-1790740725313-rme9k-11",
+        "fullName": "Ethan Murphy",
+        "votedAt": null,
+        "pin": "AB000011"
       },
       {
+        "votedAt": null,
         "fullName": "Grace Osei",
+        "id": "voter-1790740725313-r6f6v-12",
         "voterId": "STU113",
-        "votedAt": null,
         "hasVoted": false,
-        "pin": "AB000012",
-        "id": "voter-1790740725313-r6f6v-12"
+        "pin": "AB000012"
       },
       {
-        "id": "voter-1790740725313-yf8d2-13",
-        "pin": "AB000013",
+        "voterId": "STU114",
+        "hasVoted": false,
         "fullName": "Mateo Gomez",
-        "hasVoted": false,
         "votedAt": null,
-        "voterId": "STU114"
+        "pin": "AB000013",
+        "id": "voter-1790740725313-yf8d2-13"
       },
       {
-        "voterId": "STU115",
-        "votedAt": null,
         "id": "voter-1790740725313-33i9f-14",
-        "fullName": "Hanna Lindstrom",
         "pin": "AB000014",
-        "hasVoted": false
+        "voterId": "STU115",
+        "hasVoted": true,
+        "fullName": "Hanna Lindstrom",
+        "votedAt": "2026-09-30T10:31:10.259Z"
       },
       {
-        "fullName": "ABASS MOHAMMED",
-        "votedAt": null,
-        "voterId": "STU116",
         "pin": "AB000015",
-        "hasVoted": false,
-        "id": "voter-1790740725313-xzxhn-15"
+        "votedAt": "2026-09-30T10:26:46.897Z",
+        "fullName": "ABASS MOHAMMED",
+        "id": "voter-1790740725313-xzxhn-15",
+        "voterId": "STU116",
+        "hasVoted": true
       },
       {
-        "pin": "AB000016",
-        "hasVoted": false,
         "id": "voter-1790740725313-2kpg2-16",
+        "hasVoted": false,
+        "votedAt": null,
+        "pin": "AB000016",
         "fullName": "ABASS RAKIATU",
-        "voterId": "STU117",
-        "votedAt": null
+        "voterId": "STU117"
       },
       {
-        "fullName": "ABBAN EMMANUEL",
-        "voterId": "STU118",
-        "votedAt": null,
         "pin": "AB000017",
+        "fullName": "ABBAN EMMANUEL",
+        "votedAt": null,
         "id": "voter-1790740725313-4fnda-17",
+        "voterId": "STU118",
         "hasVoted": false
       },
       {
-        "hasVoted": false,
-        "voterId": "STU119",
-        "votedAt": null,
         "id": "voter-1790740725313-zscgs-18",
+        "pin": "AB000018",
+        "votedAt": null,
         "fullName": "ABDUL FATAI ABDUL HAMID",
-        "pin": "AB000018"
+        "hasVoted": false,
+        "voterId": "STU119"
       },
       {
-        "hasVoted": false,
-        "id": "voter-1790740725313-9oxgr-19",
-        "fullName": "ABDUL KARIM ZAINAB",
         "voterId": "STU120",
-        "votedAt": null,
-        "pin": "AB000019"
-      },
-      {
-        "pin": "AB000020",
-        "fullName": "ABENA DANKWAH AMPONSAH",
-        "id": "voter-1790740725313-tk4ms-20",
-        "votedAt": null,
-        "voterId": "STU121",
-        "hasVoted": false
-      },
-      {
         "hasVoted": false,
+        "pin": "AB000019",
+        "votedAt": null,
+        "fullName": "ABDUL KARIM ZAINAB",
+        "id": "voter-1790740725313-9oxgr-19"
+      },
+      {
+        "voterId": "STU121",
+        "hasVoted": false,
+        "fullName": "ABENA DANKWAH AMPONSAH",
+        "votedAt": null,
+        "pin": "AB000020",
+        "id": "voter-1790740725313-tk4ms-20"
+      },
+      {
+        "pin": "AB000021",
+        "hasVoted": false,
+        "voterId": "STU122",
         "fullName": "ABIGAIL YAA ANKOMAA AMPONSAH",
         "votedAt": null,
-        "voterId": "STU122",
-        "id": "voter-1790740725313-3u44e-21",
-        "pin": "AB000021"
+        "id": "voter-1790740725313-3u44e-21"
       },
       {
-        "fullName": "ABU EMMANUEL KPANDJA ARAFAT",
-        "hasVoted": false,
         "id": "voter-1790740725313-ucu6z-22",
-        "votedAt": null,
+        "hasVoted": false,
         "pin": "AB000022",
-        "voterId": "STU123"
+        "voterId": "STU123",
+        "fullName": "ABU EMMANUEL KPANDJA ARAFAT",
+        "votedAt": null
       },
       {
-        "id": "voter-1790740725313-rs1md-23",
         "fullName": "ABU RAZAK",
-        "votedAt": null,
         "voterId": "STU124",
-        "pin": "AB000023",
-        "hasVoted": false
+        "votedAt": null,
+        "id": "voter-1790740725313-rs1md-23",
+        "hasVoted": false,
+        "pin": "AB000023"
       },
       {
-        "fullName": "ACKOM COLLINS",
+        "votedAt": null,
         "hasVoted": false,
+        "pin": "AB000024",
         "voterId": "STU125",
-        "votedAt": null,
         "id": "voter-1790740725313-6p207-24",
-        "pin": "AB000024"
+        "fullName": "ACKOM COLLINS"
       },
       {
-        "voterId": "STU126",
-        "votedAt": null,
-        "pin": "AB000025",
         "fullName": "ACQUAH ATO ISAAC",
+        "votedAt": null,
         "hasVoted": false,
-        "id": "voter-1790740725313-cy9bh-25"
+        "id": "voter-1790740725313-cy9bh-25",
+        "voterId": "STU126",
+        "pin": "AB000025"
       },
       {
-        "fullName": "ACQUAH DEBORAH",
-        "voterId": "STU127",
         "votedAt": null,
-        "id": "voter-1790740725313-erdak-26",
         "hasVoted": false,
+        "voterId": "STU127",
+        "id": "voter-1790740725313-erdak-26",
+        "fullName": "ACQUAH DEBORAH",
         "pin": "AB000026"
       },
       {
-        "pin": "AB000027",
         "id": "voter-1790740725313-mitcf-27",
         "fullName": "ACQUAH EDNA-WHYTE",
-        "votedAt": null,
         "voterId": "STU128",
-        "hasVoted": false
-      },
-      {
-        "votedAt": null,
+        "pin": "AB000027",
         "hasVoted": false,
-        "voterId": "STU129",
-        "id": "voter-1790740725313-0at2x-28",
-        "pin": "AB000028",
-        "fullName": "ACQUAH EMMANUEL"
-      },
-      {
-        "pin": "AB000029",
-        "fullName": "ADAM RUTH",
-        "id": "voter-1790740725313-9krz7-29",
-        "hasVoted": false,
-        "voterId": "STU130",
         "votedAt": null
       },
       {
+        "voterId": "STU129",
+        "id": "voter-1790740725313-0at2x-28",
+        "hasVoted": false,
+        "fullName": "ACQUAH EMMANUEL",
+        "votedAt": null,
+        "pin": "AB000028"
+      },
+      {
+        "hasVoted": false,
+        "voterId": "STU130",
+        "id": "voter-1790740725313-9krz7-29",
+        "fullName": "ADAM RUTH",
+        "votedAt": null,
+        "pin": "AB000029"
+      },
+      {
+        "votedAt": null,
         "fullName": "ADAM TANDOH FATIMA",
-        "votedAt": null,
-        "voterId": "STU131",
-        "hasVoted": false,
         "id": "voter-1790740725313-2b420-30",
-        "pin": "AB000030"
+        "pin": "AB000030",
+        "voterId": "STU131",
+        "hasVoted": false
       },
       {
-        "fullName": "ADAMS NAZIFA",
-        "pin": "AB000031",
-        "hasVoted": false,
-        "votedAt": null,
+        "id": "voter-1790740725313-ij2nj-31",
         "voterId": "STU132",
-        "id": "voter-1790740725313-ij2nj-31"
+        "pin": "AB000031",
+        "fullName": "ADAMS NAZIFA",
+        "votedAt": null,
+        "hasVoted": false
       },
       {
-        "pin": "AB000032",
         "hasVoted": false,
         "id": "voter-1790740725313-ub52p-32",
-        "votedAt": null,
         "voterId": "STU133",
+        "pin": "AB000032",
+        "votedAt": null,
         "fullName": "ADDISON JOHN"
       },
       {
-        "hasVoted": false,
-        "votedAt": null,
         "voterId": "STU134",
         "fullName": "ADDO ADOTEY NII",
         "id": "voter-1790740725313-lfl6o-33",
-        "pin": "AB000033"
+        "pin": "AB000033",
+        "votedAt": null,
+        "hasVoted": false
       },
       {
-        "id": "voter-1790740725313-2rp2r-34",
-        "hasVoted": false,
-        "votedAt": null,
         "voterId": "STU135",
-        "pin": "AB000034",
-        "fullName": "ADDO YAYRA ANGELINA"
-      },
-      {
+        "fullName": "ADDO YAYRA ANGELINA",
         "hasVoted": false,
         "votedAt": null,
-        "voterId": "STU136",
-        "id": "voter-1790740725313-jnncz-35",
+        "id": "voter-1790740725313-2rp2r-34",
+        "pin": "AB000034"
+      },
+      {
         "fullName": "ADDOTEY JAMES",
+        "votedAt": null,
+        "hasVoted": false,
+        "id": "voter-1790740725313-jnncz-35",
+        "voterId": "STU136",
         "pin": "AB000035"
       }
     ],
@@ -441,6 +441,54 @@
             "cand-1"
           ]
         }
+      },
+      {
+        "id": "bal-1790763834521-uxiwkm",
+        "choices": {
+          "pos-5": "cand-9",
+          "pos-4": "__ABSTAIN__",
+          "pos-3": "cand-6",
+          "pos-2": "cand-3",
+          "pos-1": "cand-1"
+        },
+        "submittedAt": "2026-09-30T10:23:54.521Z",
+        "isPractice": false
+      },
+      {
+        "id": "bal-1790764004861-rv7prn",
+        "choices": {
+          "pos-5": "cand-9",
+          "pos-1": "cand-2",
+          "pos-2": "cand-3",
+          "pos-4": "cand-7",
+          "pos-3": "cand-6"
+        },
+        "submittedAt": "2026-09-30T10:26:44.861Z",
+        "isPractice": false
+      },
+      {
+        "id": "bal-1790764212393-16j36n",
+        "choices": {
+          "pos-3": "cand-6",
+          "pos-4": "cand-8",
+          "pos-2": "cand-3",
+          "pos-1": "cand-1",
+          "pos-5": "cand-10"
+        },
+        "submittedAt": "2026-09-30T10:30:12.393Z",
+        "isPractice": false
+      },
+      {
+        "id": "bal-1790764267930-z8usyp",
+        "choices": {
+          "pos-5": "cand-9",
+          "pos-4": "__ABSTAIN__",
+          "pos-3": "cand-5",
+          "pos-2": "cand-4",
+          "pos-1": "cand-1"
+        },
+        "submittedAt": "2026-09-30T10:31:07.930Z",
+        "isPractice": false
       }
     ],
     "auditLogs": [
@@ -568,6 +616,65 @@
         "timestamp": "2026-09-29T04:43:53.994Z",
         "previousHash": "6f9c1f0ebfc50cb92d9a143bb2076adfab230ad699a11e32b319290d12dc4a9b",
         "evidenceHash": "35dae01d81afbffb942dd4968bcce00d3abb90a9ba651e9397bd6e65feca3b96"
+      },
+      {
+        "eventType": "security_alert",
+        "category": "security",
+        "details": "Vote deposit blocked: Anti-bot CAPTCHA verification failed or bypassed.",
+        "actor": "Client Voter",
+        "actorRole": "Voter",
+        "ipAddress": "127.0.0.1",
+        "metadata": {
+          "reason": "CAPTCHA verification failure"
+        },
+        "id": "aud-1790765612727-0udp3",
+        "timestamp": "2026-09-30T10:53:32.727Z",
+        "previousHash": "35dae01d81afbffb942dd4968bcce00d3abb90a9ba651e9397bd6e65feca3b96",
+        "evidenceHash": "a84839bc566fa1ca280ee90b146909860d65185be2b1e35844ed40b10c411834"
+      },
+      {
+        "eventType": "security_alert",
+        "category": "security",
+        "details": "Vote rejected: Polls are currently setup.",
+        "actor": "Client Voter",
+        "actorRole": "Voter",
+        "ipAddress": "127.0.0.1",
+        "id": "aud-1790765696655-189jq",
+        "timestamp": "2026-09-30T10:54:56.655Z",
+        "previousHash": "a84839bc566fa1ca280ee90b146909860d65185be2b1e35844ed40b10c411834",
+        "evidenceHash": "dc504319e6edb383b05faadaac7d05bf75a3800ff5d5b282990c594dbf2049cd"
+      },
+      {
+        "eventType": "security_alert",
+        "category": "security",
+        "details": "EVIDENTIARY DOUBLE-VOTING ALERT: Student ID \"STU115\" (Hanna Lindstrom) attempted to cast a duplicate ballot. Attempt blocked.",
+        "actor": "Student Voter (STU115)",
+        "actorRole": "Voter",
+        "ipAddress": "127.0.0.1",
+        "metadata": {
+          "studentId": "STU115",
+          "originalVotedAt": "2026-09-30T10:31:10.259Z"
+        },
+        "id": "aud-1790766161318-je10o",
+        "timestamp": "2026-09-30T11:02:41.318Z",
+        "previousHash": "dc504319e6edb383b05faadaac7d05bf75a3800ff5d5b282990c594dbf2049cd",
+        "evidenceHash": "02501917ee7e36f9189d2be84782ebe648433dc020af2391d685373e709b8eea"
+      },
+      {
+        "eventType": "security_alert",
+        "category": "security",
+        "details": "EVIDENTIARY DOUBLE-VOTING ALERT: Student ID \"STU116\" (ABASS MOHAMMED) attempted to cast a duplicate ballot. Attempt blocked.",
+        "actor": "Student Voter (STU116)",
+        "actorRole": "Voter",
+        "ipAddress": "127.0.0.1",
+        "metadata": {
+          "studentId": "STU116",
+          "originalVotedAt": "2026-09-30T10:26:46.897Z"
+        },
+        "id": "aud-1790766169509-rfl5a",
+        "timestamp": "2026-09-30T11:02:49.509Z",
+        "previousHash": "02501917ee7e36f9189d2be84782ebe648433dc020af2391d685373e709b8eea",
+        "evidenceHash": "3b8e90cfbfe7aba285e9da00c388c44b3d54183f90d97c7b1f0fe05a4ad56b22"
       }
     ],
     "accounts": [
@@ -613,5 +720,5 @@
       }
     ]
   },
-  "status": "Setup"
+  "status": "Open"
 }

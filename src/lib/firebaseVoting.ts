@@ -65,6 +65,60 @@ export async function saveAnonymousVoteToFirestore(ballot: Ballot): Promise<bool
 }
 
 /**
+ * Checks in real-time whether a voter token exists and whether it has already been used to cast a ballot.
+ */
+export async function checkVoterTokenInFirestore(
+  voterId: string
+): Promise<{
+  exists: boolean;
+  hasVoted: boolean;
+  votedAt: string | null;
+  pin?: string;
+}> {
+  try {
+    const cleanId = voterId.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '_');
+    const tokenRef = doc(db, 'voter_tokens', `token-${cleanId}`);
+    const tokenTask = getDoc(tokenRef);
+    const snap = await withTimeout(tokenTask, 2500, null);
+
+    if (snap && snap.exists()) {
+      const data = snap.data();
+      return {
+        exists: true,
+        hasVoted: Boolean(data.hasVoted || data.status === 'used'),
+        votedAt: data.votedAt || null,
+        pin: data.token,
+      };
+    }
+
+    // Fallback: Check election_metadata current roster in case tokens collection was not populated
+    try {
+      const metaRef = doc(db, 'election_metadata', 'current');
+      const metaSnap = await withTimeout(getDoc(metaRef), 2000, null);
+      if (metaSnap && metaSnap.exists()) {
+        const meta = metaSnap.data();
+        const found = (meta.voters || []).find(
+          (v: any) => v.voterId?.trim().toUpperCase() === cleanId
+        );
+        if (found) {
+          return {
+            exists: true,
+            hasVoted: Boolean(found.hasVoted),
+            votedAt: found.votedAt || null,
+            pin: found.pin,
+          };
+        }
+      }
+    } catch {
+      // ignore
+    }
+  } catch (error) {
+    console.warn('[Firebase] Could not verify voter token in Firestore:', error);
+  }
+  return { exists: false, hasVoted: false, votedAt: null };
+}
+
+/**
  * Updates a voter's token in Firestore to mark them as having cast their ballot.
  */
 export async function markVoterTokenUsedInFirestore(
@@ -74,29 +128,86 @@ export async function markVoterTokenUsedInFirestore(
   try {
     const cleanId = voterId.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '_');
     const tokenRef = doc(db, 'voter_tokens', `token-${cleanId}`);
-    const snap = await getDoc(tokenRef);
 
     const updateData = {
+      id: `token-${cleanId}`,
+      voterId: voterId.trim().toUpperCase(),
       hasVoted: true,
       votedAt: votedAt || new Date().toISOString(),
-      status: 'used',
+      status: 'used' as const,
     };
 
-    if (snap.exists()) {
-      await updateDoc(tokenRef, updateData);
-    } else {
-      await setDoc(tokenRef, {
-        id: `token-${cleanId}`,
-        voterId: voterId.trim().toUpperCase(),
-        token: 'AUTO-SECURED',
-        fullName: 'Registered Student',
-        ...updateData,
-        issuedAt: new Date().toISOString(),
-      });
+    // Use atomic merge set so it always succeeds whether document existed or not
+    const setTask = setDoc(tokenRef, updateData, { merge: true });
+    await withTimeout(setTask, 2500, null);
+
+    // Also update election_metadata/current roster so all devices see the vote on the roster
+    try {
+      const metaRef = doc(db, 'election_metadata', 'current');
+      const metaSnap = await withTimeout(getDoc(metaRef), 2000, null);
+      if (metaSnap && metaSnap.exists()) {
+        const meta = metaSnap.data();
+        if (Array.isArray(meta.voters)) {
+          const updatedVoters = meta.voters.map((v: any) =>
+            v.voterId.trim().toUpperCase() === voterId.trim().toUpperCase()
+              ? { ...v, hasVoted: true, votedAt: updateData.votedAt }
+              : v
+          );
+          const updateTask = updateDoc(metaRef, { voters: updatedVoters, lastUpdated: new Date().toISOString() });
+          await withTimeout(updateTask, 2000, null);
+        }
+      }
+    } catch (metaErr) {
+      console.warn('[Firebase] Non-fatal metadata voter flag sync warning:', metaErr);
     }
+
     return true;
   } catch (error) {
     console.error('[Firebase] Failed to update voter token in Firestore:', error);
+    return false;
+  }
+}
+
+/**
+ * Resets a single voter's token status in Firestore back to active/unvoted (Admin authorized).
+ */
+export async function resetVoterTokenInFirestore(voterId: string): Promise<boolean> {
+  try {
+    const cleanId = voterId.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '_');
+    const tokenRef = doc(db, 'voter_tokens', `token-${cleanId}`);
+    const setTask = setDoc(
+      tokenRef,
+      {
+        hasVoted: false,
+        votedAt: null,
+        status: 'active' as const,
+      },
+      { merge: true }
+    );
+    await withTimeout(setTask, 2500, null);
+
+    // Also reset in election_metadata
+    try {
+      const metaRef = doc(db, 'election_metadata', 'current');
+      const metaSnap = await withTimeout(getDoc(metaRef), 2000, null);
+      if (metaSnap && metaSnap.exists()) {
+        const meta = metaSnap.data();
+        if (Array.isArray(meta.voters)) {
+          const updatedVoters = meta.voters.map((v: any) =>
+            v.voterId.trim().toUpperCase() === voterId.trim().toUpperCase()
+              ? { ...v, hasVoted: false, votedAt: null }
+              : v
+          );
+          const updateTask = updateDoc(metaRef, { voters: updatedVoters, lastUpdated: new Date().toISOString() });
+          await withTimeout(updateTask, 2000, null);
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return true;
+  } catch (err) {
+    console.warn('[Firebase] Could not reset voter token in Firestore:', err);
     return false;
   }
 }

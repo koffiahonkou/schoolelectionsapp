@@ -185,6 +185,74 @@ export async function saveElectionData(data: ElectionData): Promise<void> {
   }
 }
 
+const VOTED_STORAGE_KEY = 'school_election_voted_ids';
+
+/**
+ * Retrieves the set of voter IDs that have cast a ballot in this browser
+ */
+export function getLocallyVotedVoterIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(VOTED_STORAGE_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    return new Set(Array.isArray(parsed) ? parsed.map((id: string) => id.toUpperCase()) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+/**
+ * Permanently locks a voter ID locally once a ballot is deposited
+ */
+export function markVoterLocallyVoted(voterId: string): void {
+  if (!voterId) return;
+  try {
+    const set = getLocallyVotedVoterIds();
+    set.add(voterId.trim().toUpperCase());
+    localStorage.setItem(VOTED_STORAGE_KEY, JSON.stringify(Array.from(set)));
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Checks whether a voter ID has already deposited an official ballot locally
+ */
+export function isVoterLocallyMarkedVoted(voterId: string): boolean {
+  if (!voterId) return false;
+  try {
+    const set = getLocallyVotedVoterIds();
+    return set.has(voterId.trim().toUpperCase());
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resets a single voter's participation record when authorized by an Electoral Commissioner
+ */
+export function resetVoterLocallyVoted(voterId: string): void {
+  if (!voterId) return;
+  try {
+    const set = getLocallyVotedVoterIds();
+    set.delete(voterId.trim().toUpperCase());
+    localStorage.setItem(VOTED_STORAGE_KEY, JSON.stringify(Array.from(set)));
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Clears all local voter participation records on full election purge
+ */
+export function clearAllLocallyVoted(): void {
+  try {
+    localStorage.removeItem(VOTED_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 /**
  * Completely wipe all election data from local IndexedDB and localStorage
  */
@@ -192,6 +260,7 @@ export async function clearAllStoredElectionData(): Promise<void> {
   try {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(STATUS_STORAGE_KEY);
+    clearAllLocallyVoted();
   } catch {
     // ignore
   }
