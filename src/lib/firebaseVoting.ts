@@ -324,6 +324,29 @@ export async function registerOrPingAgent(agent: AgentObserverRecord): Promise<b
 }
 
 /**
+ * Purges all ballots in the Firestore 'votes' collection.
+ * Used to reset the live ballot box without deleting roster or candidates.
+ */
+export async function clearAllFirestoreVotes(): Promise<boolean> {
+  try {
+    const snap = await getDocs(collection(db, 'votes'));
+    if (!snap.empty) {
+      const docs = snap.docs;
+      for (let i = 0; i < docs.length; i += 400) {
+        const batch = writeBatch(db);
+        const chunk = docs.slice(i, i + 400);
+        chunk.forEach((d) => batch.delete(d.ref));
+        await batch.commit();
+      }
+    }
+    return true;
+  } catch (error) {
+    console.error('[Firebase] Failed to clear votes collection:', error);
+    return false;
+  }
+}
+
+/**
  * Completely purges all votes, voter tokens, and agent monitoring telemetry from Firestore
  * to make room for a completely fresh selection setup.
  */

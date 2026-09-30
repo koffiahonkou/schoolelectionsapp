@@ -48,6 +48,7 @@ import {
   markVoterTokenUsedInFirestore,
   syncVoterRosterToFirestoreTokens,
   clearAllFirestoreElectionData,
+  clearAllFirestoreVotes,
   saveElectionStatusToFirestore,
   saveElectionStateToFirestore,
   getElectionMetadataFromFirestore,
@@ -217,7 +218,7 @@ export default function App() {
                 ? cloudMeta.candidates
                 : (localData?.candidates || []),
               voters: mergedVoters,
-              ballots: localData?.ballots || [],
+              ballots: cloudMeta.status === 'Setup' ? [] : (localData?.ballots || []),
               auditLogs: localData?.auditLogs && localData.auditLogs.length > 0 ? localData.auditLogs : fallback.auditLogs,
               accounts: baseAccounts,
             };
@@ -1017,17 +1018,29 @@ export default function App() {
   };
 
   const handleStartNewElection = async (clearRoster: boolean, isFullSystemWipe = false) => {
-    if (isFullSystemWipe || clearRoster) {
-      try {
+    try {
+      if (isFullSystemWipe || clearRoster) {
         await clearAllFirestoreElectionData();
-      } catch (err) {
-        console.error('Failed to clear firestore data:', err);
+      } else {
+        await clearAllFirestoreVotes();
       }
+    } catch (err) {
+      console.error('Failed to clear firestore data:', err);
     }
+
     const empty = createEmptyElectionData(
       isFullSystemWipe ? 'New Student Election' : (data?.config.title || 'New Student Election'),
       isFullSystemWipe ? (data?.config.schoolName || 'Our School') : (data?.config.schoolName || 'Our School')
     );
+    empty.ballots = [];
+
+    // If starting a fresh cycle without a full wipe, preserve existing ballot positions & candidates
+    if (!isFullSystemWipe && data) {
+      empty.positions = data.positions;
+      empty.candidates = data.candidates;
+      empty.config = { ...data.config };
+    }
+
     if (!clearRoster && !isFullSystemWipe && data?.voters) {
       // Keep roster but reset voted flags
       empty.voters = data.voters.map((v) => ({ ...v, hasVoted: false, votedAt: null }));

@@ -99,6 +99,13 @@ export default async function handler(req: any, res: any) {
       }
     }
 
+    // Ensure that if election is in Setup mode, no previous ballots or test votes are returned
+    if (electionPayload) {
+      if (electionStatus === 'Setup' || !electionPayload.ballots) {
+        electionPayload.ballots = [];
+      }
+    }
+
     if (req.method === 'POST') {
       return res.status(200).json({
         success: true,

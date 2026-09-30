@@ -41,6 +41,7 @@ import {
   ChevronUp,
   X,
   LogOut,
+  Trash2,
 } from 'lucide-react';
 import { ElectionClock } from '../Common/ElectionClock';
 import {
@@ -50,6 +51,7 @@ import {
   saveAnonymousVoteToFirestore,
   syncVoterRosterToFirestoreTokens,
   registerOrPingAgent,
+  clearAllFirestoreVotes,
   AgentObserverRecord,
   VoterTokenRecord,
   FIREBASE_PROJECT_ID,
@@ -226,18 +228,19 @@ export const AgentMonitoringView: React.FC<AgentMonitoringViewProps> = ({
     };
   }, [refreshFirestoreData]);
 
-  // Merge Firestore ballots with props ballots (prefer Firestore if available, otherwise deduplicate by id)
+  // Derive active ballots for live monitoring
   const activeBallots = useMemo(() => {
-    if (firestoreVotes.length === 0) {
-      return initialBallots;
+    // 1. If election is in Setup mode, voting has not started - strictly zero ballots
+    if (status === 'Setup') {
+      return [];
     }
-    const map = new Map<string, Ballot>();
-    // Initial local ballots
-    initialBallots.forEach((b) => map.set(b.id, b));
-    // Overlay real-time Firestore ballots
-    firestoreVotes.forEach((b) => map.set(b.id, b));
-    return Array.from(map.values());
-  }, [firestoreVotes, initialBallots]);
+    // 2. If real-time stream is active, strictly reflect Firestore live votes
+    if (isStreamActive) {
+      return firestoreVotes;
+    }
+    // 3. Offline fallback when disconnected from Firestore
+    return initialBallots;
+  }, [firestoreVotes, initialBallots, isStreamActive, status]);
 
   // Compute tallies strictly for percentage derivation
   const report = useMemo(() => {
@@ -308,6 +311,11 @@ export const AgentMonitoringView: React.FC<AgentMonitoringViewProps> = ({
 
   // Test Real-Time anonymous vote deposit to demonstrate the live Firestore listener
   const handleDepositTestVote = async () => {
+    if (status !== 'Open') {
+      setSyncNotice('Cannot simulate votes while election is in Setup mode. Open polls first.');
+      setTimeout(() => setSyncNotice(null), 4000);
+      return;
+    }
     if (positions.length === 0) return;
     const testChoices: Record<string, string> = {};
 
@@ -336,6 +344,21 @@ export const AgentMonitoringView: React.FC<AgentMonitoringViewProps> = ({
       setSyncNotice('Test anonymous ballot deposited to Firestore. Watch live chart update!');
       setTimeout(() => setSyncNotice(null), 4000);
     }
+  };
+
+  // Reset/Purge live stream ballots to 0
+  const handleClearLiveVotes = async () => {
+    setIsSyncing(true);
+    const ok = await clearAllFirestoreVotes();
+    if (ok) {
+      setFirestoreVotes([]);
+      setSyncNotice('All live ballots cleared. Live stream reset to 0.');
+      setTimeout(() => setSyncNotice(null), 4000);
+    } else {
+      setSyncNotice('Failed to clear ballots from Firestore.');
+      setTimeout(() => setSyncNotice(null), 4000);
+    }
+    setIsSyncing(false);
   };
 
   // Prepare chart dataset for each position - STRICTLY ANONYMOUS PERCENTAGES
@@ -638,12 +661,12 @@ export const AgentMonitoringView: React.FC<AgentMonitoringViewProps> = ({
             </div>
             <div className="mt-2 flex items-baseline gap-2">
               <span className="text-2xl font-black text-slate-900 dark:text-white font-mono">
-                {liveAgents.length > 0 ? liveAgents.length : '3 (Demo)'}
+                {liveAgents.length}
               </span>
               <span className="text-2xs text-slate-400">certified</span>
             </div>
             <div className="mt-2 flex items-center justify-between text-3xs text-slate-400 border-t border-slate-100 dark:border-slate-800 pt-2">
-              <span>All races scrutinized</span>
+              <span>{liveAgents.length > 0 ? 'All races scrutinized' : 'Awaiting check-in'}</span>
               <button
                 type="button"
                 onClick={() => setShowAgentModal(true)}
@@ -668,16 +691,28 @@ export const AgentMonitoringView: React.FC<AgentMonitoringViewProps> = ({
               <Activity className="w-4 h-4 text-purple-500" />
             </div>
             <div className="mt-2 flex gap-1.5 flex-wrap">
+              {!isViewOnly && (
+                <button
+                  type="button"
+                  onClick={handleClearLiveVotes}
+                  disabled={isSyncing}
+                  className="px-2.5 py-1.5 rounded-xl border text-2xs font-bold flex items-center gap-1 transition-colors bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800 cursor-pointer shadow-2xs"
+                  title="Purge all deposited test/live ballots to reset stream to zero"
+                >
+                  <Trash2 className="w-3 h-3 text-rose-500" />
+                  <span>Clear Votes (0)</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={handleDepositTestVote}
-                disabled={isViewOnly}
+                disabled={isViewOnly || status !== 'Open'}
                 className={`px-2.5 py-1.5 rounded-xl border text-2xs font-bold flex items-center gap-1 transition-colors ${
-                  isViewOnly
+                  isViewOnly || status !== 'Open'
                     ? 'bg-slate-100 dark:bg-slate-800/50 text-slate-400 dark:text-slate-600 border-slate-200 dark:border-slate-800 cursor-not-allowed opacity-60'
                     : 'bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-100 text-purple-900 dark:text-purple-300 border-purple-200 dark:border-purple-800 cursor-pointer'
                 }`}
-                title={isViewOnly ? 'Simulate Vote disabled for view-only account' : 'Deposit an anonymous test vote to Firestore to verify real-time chart animation'}
+                title={status !== 'Open' ? 'Simulate Vote disabled in Setup mode' : (isViewOnly ? 'Simulate Vote disabled for view-only account' : 'Deposit an anonymous test vote to Firestore to verify live charts')}
               >
                 <Sparkles className="w-3 h-3 text-purple-500" />
                 <span>Simulate Vote</span>
