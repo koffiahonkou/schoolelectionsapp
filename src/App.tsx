@@ -358,8 +358,8 @@ export default function App() {
                 };
               });
 
-              // Only update status from polling if Firestore cloud status is NOT verified
-              if (json.status && !cloudStatusVerified) {
+              // Update status from polling if no local commissioner status is explicitly stored
+              if (json.status) {
                 setStatus((cur) => {
                   const stored = loadStoredElectionStatus();
                   if (stored) return stored; // Respect stored commissioner intent

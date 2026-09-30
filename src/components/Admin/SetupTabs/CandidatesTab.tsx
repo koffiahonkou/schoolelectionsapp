@@ -39,7 +39,9 @@ export const CandidatesTab: React.FC<CandidatesTabProps> = ({
   onUnlockRequest,
 }) => {
   const permissions = getUserPermissions(currentUser);
-  const canEdit = (permissions.canManageBallot || currentUser?.role === 'Developer') && !isLocked;
+  const isDeveloper = currentUser?.role === 'Developer';
+  const canManageBallot = permissions.canManageBallot || isDeveloper;
+  const canEdit = canManageBallot && !isLocked;
 
   const [selectedPosFilter, setSelectedPosFilter] = useState<string>('ALL');
   const [isAdding, setIsAdding] = useState(false);
@@ -222,21 +224,21 @@ export const CandidatesTab: React.FC<CandidatesTabProps> = ({
             </button>
           )}
 
-          {!isAdding && !isDeveloper && (
+          {!isAdding && !canManageBallot && (
             <div
               id="developer-candidates-restricted-badge"
               className="px-3.5 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-amber-800 dark:text-amber-300 text-xs font-semibold flex items-center gap-1.5"
-              title="Restricted strictly to Developer account"
+              title="Read-only permissions"
             >
               <Lock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-              <span>Developer Account Only (Read-Only)</span>
+              <span>Read-Only Mode</span>
             </div>
           )}
         </div>
       </div>
 
-      {/* Developer Restriction Notice for Non-Developer Accounts */}
-      {!isDeveloper && (
+      {/* Restriction Notice for Non-Authorized Accounts */}
+      {!canManageBallot && (
         <div
           id="developer-candidates-policy-notice"
           className="p-4 rounded-2xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 text-amber-900 dark:text-amber-200 flex items-start gap-3"
@@ -245,7 +247,7 @@ export const CandidatesTab: React.FC<CandidatesTabProps> = ({
           <div className="text-xs">
             <p className="font-bold">Candidates Setup Restricted</p>
             <p className="mt-0.5 text-amber-800 dark:text-amber-300">
-              Only the Developer account is authorized to add, edit profile details, upload candidate photos, or delete candidates. Other accounts may review registered aspirants in read-only mode.
+              Only authorized election officials are permitted to add, edit profile details, upload candidate photos, or delete candidates.
             </p>
           </div>
         </div>

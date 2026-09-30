@@ -35,7 +35,9 @@ export const PositionsTab: React.FC<PositionsTabProps> = ({
   onUnlockRequest,
 }) => {
   const permissions = getUserPermissions(currentUser);
-  const canEdit = (permissions.canManageBallot || currentUser?.role === 'Developer') && !isLocked;
+  const isDeveloper = currentUser?.role === 'Developer';
+  const canManageBallot = permissions.canManageBallot || isDeveloper;
+  const canEdit = canManageBallot && !isLocked;
 
   const [isAdding, setIsAdding] = useState(false);
   const [editingPosId, setEditingPosId] = useState<string | null>(null);
@@ -138,20 +140,20 @@ export const PositionsTab: React.FC<PositionsTabProps> = ({
           </button>
         )}
 
-        {!isAdding && !isDeveloper && (
+        {!isAdding && !canManageBallot && (
           <div
             id="developer-positions-restricted-badge"
             className="px-3.5 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-amber-800 dark:text-amber-300 text-xs font-semibold flex items-center gap-1.5 self-start sm:self-auto"
-            title="Restricted strictly to Developer account"
+            title="Read-only permissions"
           >
             <Lock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-            <span>Developer Account Only (Read-Only)</span>
+            <span>Read-Only Mode</span>
           </div>
         )}
       </div>
 
-      {/* Developer Restriction Notice for Non-Developer Accounts */}
-      {!isDeveloper && (
+      {/* Restriction Notice for Non-Authorized Accounts */}
+      {!canManageBallot && (
         <div
           id="developer-positions-policy-notice"
           className="p-4 rounded-2xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 text-amber-900 dark:text-amber-200 flex items-start gap-3"
@@ -160,14 +162,14 @@ export const PositionsTab: React.FC<PositionsTabProps> = ({
           <div className="text-xs">
             <p className="font-bold">Positions Setup Restricted</p>
             <p className="mt-0.5 text-amber-800 dark:text-amber-300">
-              Only the Developer account is authorized to add, edit, reorder, or delete ballot positions. Other accounts may review configured races in read-only mode.
+              Only authorized election officials are permitted to modify ballot positions.
             </p>
           </div>
         </div>
       )}
 
       {/* Locked Notice */}
-      {isDeveloper && isLocked && (
+      {canManageBallot && isLocked && (
         <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 flex items-start justify-between gap-4">
           <div className="flex items-start gap-3">
             <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
