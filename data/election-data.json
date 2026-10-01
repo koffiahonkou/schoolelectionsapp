@@ -1,4 +1,5 @@
 {
+  "status": "Open",
   "data": {
     "config": {
       "schoolName": "University of Cape Coast",
@@ -141,30 +142,30 @@
         "fullName": "Jordan Taylor",
         "voterId": "STU101",
         "pin": "AB000001",
-        "votedAt": null,
+        "votedAt": "2026-09-30T04:56:48.508Z",
         "id": "voter-1790740725312-alec1-1",
-        "hasVoted": false
+        "hasVoted": true
       },
       {
         "pin": "AB000002",
-        "votedAt": null,
+        "votedAt": "2026-09-30T10:23:54.521Z",
         "fullName": "Alex Rivera",
         "id": "voter-1790740725312-2c3rs-2",
-        "hasVoted": false,
+        "hasVoted": true,
         "voterId": "STU103"
       },
       {
-        "hasVoted": false,
+        "hasVoted": true,
         "voterId": "STU104",
         "pin": "AB000003",
         "id": "voter-1790740725312-fotjv-3",
         "fullName": "Kwame Asante",
-        "votedAt": null
+        "votedAt": "2026-09-30T10:26:44.861Z"
       },
       {
         "pin": "AB000004",
-        "votedAt": null,
-        "hasVoted": false,
+        "votedAt": "2026-09-30T10:30:12.393Z",
+        "hasVoted": true,
         "id": "voter-1790740725312-3ygxh-4",
         "voterId": "STU105",
         "fullName": "Fatima Zahra"
@@ -174,36 +175,36 @@
         "voterId": "STU106",
         "pin": "AB000005",
         "id": "voter-1790740725312-1akxw-5",
-        "votedAt": null,
-        "hasVoted": false
+        "votedAt": "2026-09-30T10:31:07.930Z",
+        "hasVoted": true
       },
       {
         "voterId": "STU107",
         "pin": "AB000006",
         "id": "voter-1790740725312-mydw4-6",
-        "hasVoted": false,
-        "votedAt": null,
+        "hasVoted": true,
+        "votedAt": "2026-09-30T13:03:47.620Z",
         "fullName": "Priya Sharma"
       },
       {
-        "votedAt": null,
+        "votedAt": "2026-09-30T18:08:34.866Z",
         "fullName": "Noah Williams",
         "pin": "AB000007",
         "voterId": "STU108",
-        "hasVoted": false,
+        "hasVoted": true,
         "id": "voter-1790740725312-ligkq-7"
       },
       {
         "fullName": "Zoe Martinez",
-        "votedAt": null,
+        "votedAt": "2026-09-30T18:16:28.292Z",
         "voterId": "STU109",
         "pin": "AB000008",
         "id": "voter-1790740725312-wix8y-8",
-        "hasVoted": false
+        "hasVoted": true
       },
       {
-        "votedAt": null,
-        "hasVoted": false,
+        "votedAt": "2026-09-30T18:20:29.910Z",
+        "hasVoted": true,
         "voterId": "STU110",
         "fullName": "David Kim",
         "id": "voter-1790740725312-t6z5u-9",
@@ -213,31 +214,31 @@
         "id": "voter-1790740725312-jnx6h-10",
         "voterId": "STU111",
         "fullName": "Aisha Bello",
-        "votedAt": null,
+        "votedAt": "2026-09-30T18:21:47.955Z",
         "pin": "AB000010",
-        "hasVoted": false
+        "hasVoted": true
       },
       {
-        "hasVoted": false,
+        "hasVoted": true,
         "voterId": "STU112",
         "id": "voter-1790740725313-rme9k-11",
         "fullName": "Ethan Murphy",
-        "votedAt": null,
+        "votedAt": "2026-09-30T18:23:16.325Z",
         "pin": "AB000011"
       },
       {
-        "votedAt": null,
+        "votedAt": "2026-09-30T18:32:57.881Z",
         "fullName": "Grace Osei",
         "id": "voter-1790740725313-r6f6v-12",
         "voterId": "STU113",
-        "hasVoted": false,
+        "hasVoted": true,
         "pin": "AB000012"
       },
       {
         "voterId": "STU114",
-        "hasVoted": false,
+        "hasVoted": true,
         "fullName": "Mateo Gomez",
-        "votedAt": null,
+        "votedAt": "2026-09-30T18:34:24.596Z",
         "pin": "AB000013",
         "id": "voter-1790740725313-yf8d2-13"
       },
@@ -247,11 +248,11 @@
         "voterId": "STU115",
         "hasVoted": true,
         "fullName": "Hanna Lindstrom",
-        "votedAt": "2026-09-30T10:31:10.259Z"
+        "votedAt": "2026-09-30T18:35:55.746Z"
       },
       {
         "pin": "AB000015",
-        "votedAt": "2026-09-30T10:26:46.897Z",
+        "votedAt": "2026-09-30T18:52:10.454Z",
         "fullName": "ABASS MOHAMMED",
         "id": "voter-1790740725313-xzxhn-15",
         "voterId": "STU116",
@@ -259,8 +260,8 @@
       },
       {
         "id": "voter-1790740725313-2kpg2-16",
-        "hasVoted": false,
-        "votedAt": null,
+        "hasVoted": true,
+        "votedAt": "2026-09-30T19:17:27.383Z",
         "pin": "AB000016",
         "fullName": "ABASS RAKIATU",
         "voterId": "STU117"
@@ -268,10 +269,10 @@
       {
         "pin": "AB000017",
         "fullName": "ABBAN EMMANUEL",
-        "votedAt": null,
+        "votedAt": "2026-09-30T19:28:49.866Z",
         "id": "voter-1790740725313-4fnda-17",
         "voterId": "STU118",
-        "hasVoted": false
+        "hasVoted": true
       },
       {
         "id": "voter-1790740725313-zscgs-18",
@@ -420,35 +421,24 @@
     ],
     "ballots": [
       {
-        "id": "bal-1790653093142-atw68",
-        "submittedAt": "2026-09-29T03:38:13.142Z",
-        "isPractice": false,
+        "id": "bal-1790744208508-vmuax6",
         "choices": {
-          "pos-1790651044225": "cand-1790651301329",
-          "pos-1790651069537": "cand-1790651326192",
-          "pos-1790651146819": "cand-1790651417952",
-          "pos-1790651174027": "cand-1790651456096",
-          "pos-1790651188299": "__ABSTAIN__",
-          "pos-1790651201500": "cand-1790651640103"
-        }
-      },
-      {
-        "id": "bal-1790656380931-hos6is",
-        "submittedAt": "2026-09-29T04:33:00.931Z",
-        "isPractice": true,
-        "choices": {
-          "pos-1": [
-            "cand-1"
-          ]
-        }
+          "pos-4": "cand-7",
+          "pos-2": "cand-3",
+          "pos-3": "cand-5",
+          "pos-5": "cand-9",
+          "pos-1": "cand-1"
+        },
+        "submittedAt": "2026-09-30T04:56:48.508Z",
+        "isPractice": false
       },
       {
         "id": "bal-1790763834521-uxiwkm",
         "choices": {
-          "pos-5": "cand-9",
           "pos-4": "__ABSTAIN__",
-          "pos-3": "cand-6",
           "pos-2": "cand-3",
+          "pos-3": "cand-6",
+          "pos-5": "cand-9",
           "pos-1": "cand-1"
         },
         "submittedAt": "2026-09-30T10:23:54.521Z",
@@ -457,11 +447,11 @@
       {
         "id": "bal-1790764004861-rv7prn",
         "choices": {
-          "pos-5": "cand-9",
-          "pos-1": "cand-2",
-          "pos-2": "cand-3",
           "pos-4": "cand-7",
-          "pos-3": "cand-6"
+          "pos-3": "cand-6",
+          "pos-2": "cand-3",
+          "pos-5": "cand-9",
+          "pos-1": "cand-2"
         },
         "submittedAt": "2026-09-30T10:26:44.861Z",
         "isPractice": false
@@ -469,11 +459,11 @@
       {
         "id": "bal-1790764212393-16j36n",
         "choices": {
-          "pos-3": "cand-6",
           "pos-4": "cand-8",
           "pos-2": "cand-3",
-          "pos-1": "cand-1",
-          "pos-5": "cand-10"
+          "pos-3": "cand-6",
+          "pos-5": "cand-10",
+          "pos-1": "cand-1"
         },
         "submittedAt": "2026-09-30T10:30:12.393Z",
         "isPractice": false
@@ -481,13 +471,157 @@
       {
         "id": "bal-1790764267930-z8usyp",
         "choices": {
-          "pos-5": "cand-9",
           "pos-4": "__ABSTAIN__",
           "pos-3": "cand-5",
           "pos-2": "cand-4",
+          "pos-5": "cand-9",
           "pos-1": "cand-1"
         },
         "submittedAt": "2026-09-30T10:31:07.930Z",
+        "isPractice": false
+      },
+      {
+        "id": "bal-1790773427620-0qutrk",
+        "choices": {
+          "pos-2": "cand-4",
+          "pos-3": "__ABSTAIN__",
+          "pos-4": "cand-7",
+          "pos-1": "cand-1",
+          "pos-5": "cand-10"
+        },
+        "submittedAt": "2026-09-30T13:03:47.620Z",
+        "isPractice": false
+      },
+      {
+        "id": "bal-1790791714865-6ywfak",
+        "choices": {
+          "pos-1": "cand-1",
+          "pos-5": "cand-10",
+          "pos-3": "cand-6",
+          "pos-2": "cand-3",
+          "pos-4": "cand-7"
+        },
+        "submittedAt": "2026-09-30T18:08:34.866Z",
+        "isPractice": false
+      },
+      {
+        "id": "bal-1790792188292-z546ka",
+        "choices": {
+          "pos-2": "cand-4",
+          "pos-3": "cand-6",
+          "pos-4": "cand-7",
+          "pos-1": "cand-2",
+          "pos-5": "__ABSTAIN__"
+        },
+        "submittedAt": "2026-09-30T18:16:28.292Z",
+        "isPractice": false
+      },
+      {
+        "id": "bal-1790792429910-jqe2t8",
+        "choices": {
+          "pos-2": "cand-4",
+          "pos-3": "cand-6",
+          "pos-4": "__ABSTAIN__",
+          "pos-1": "__ABSTAIN__",
+          "pos-5": "cand-9"
+        },
+        "submittedAt": "2026-09-30T18:20:29.910Z",
+        "isPractice": false
+      },
+      {
+        "id": "bal-1790792507955-yhd78o",
+        "choices": {
+          "pos-1": "cand-1",
+          "pos-5": "cand-9",
+          "pos-2": "__ABSTAIN__",
+          "pos-3": "cand-5",
+          "pos-4": "cand-8"
+        },
+        "submittedAt": "2026-09-30T18:21:47.955Z",
+        "isPractice": false
+      },
+      {
+        "id": "bal-1790792596325-ee93da",
+        "choices": {
+          "pos-4": "cand-7",
+          "pos-2": "__ABSTAIN__",
+          "pos-3": "cand-6",
+          "pos-5": "__ABSTAIN__",
+          "pos-1": "cand-1"
+        },
+        "submittedAt": "2026-09-30T18:23:16.325Z",
+        "isPractice": false
+      },
+      {
+        "id": "bal-1790793177881-fml6ze",
+        "choices": {
+          "pos-1": "cand-1",
+          "pos-5": "cand-10",
+          "pos-3": "cand-6",
+          "pos-2": "__ABSTAIN__",
+          "pos-4": "cand-8"
+        },
+        "submittedAt": "2026-09-30T18:32:57.881Z",
+        "isPractice": false
+      },
+      {
+        "id": "bal-1790793264596-dhd2eq",
+        "choices": {
+          "pos-5": "cand-10",
+          "pos-1": "cand-1",
+          "pos-4": "__ABSTAIN__",
+          "pos-3": "cand-6",
+          "pos-2": "cand-3"
+        },
+        "submittedAt": "2026-09-30T18:34:24.596Z",
+        "isPractice": false
+      },
+      {
+        "id": "bal-1790793355746-8w5w7d",
+        "choices": {
+          "pos-5": "cand-10",
+          "pos-1": "cand-1",
+          "pos-4": "cand-8",
+          "pos-2": "cand-3",
+          "pos-3": "cand-6"
+        },
+        "submittedAt": "2026-09-30T18:35:55.746Z",
+        "isPractice": false
+      },
+      {
+        "id": "bal-1790794330454-1csuv9",
+        "choices": {
+          "pos-1": "cand-1",
+          "pos-5": "cand-10",
+          "pos-3": "cand-6",
+          "pos-2": "cand-3",
+          "pos-4": "cand-8"
+        },
+        "submittedAt": "2026-09-30T18:52:10.454Z",
+        "isPractice": false
+      },
+      {
+        "id": "bal-1790795847383-2kwujx",
+        "choices": {
+          "pos-5": "cand-9",
+          "pos-1": "cand-1",
+          "pos-4": "cand-8",
+          "pos-2": "cand-3",
+          "pos-3": "cand-6"
+        },
+        "submittedAt": "2026-09-30T19:17:27.383Z",
+        "isPractice": false
+      },
+      {
+        "id": "bal-1790796529866-mcfhw8",
+        "choices": {
+          "pos-4": "cand-8",
+          "pos-3": "cand-6",
+          "pos-2": "cand-3",
+          "pos-5": "__ABSTAIN__",
+          "pos-1": "cand-1"
+        },
+        "submittedAt": "2026-09-30T19:28:49.866Z",
         "isPractice": false
       }
     ],
@@ -719,6 +853,5 @@
         "email": "dev@school-systems.internal"
       }
     ]
-  },
-  "status": "Open"
+  }
 }

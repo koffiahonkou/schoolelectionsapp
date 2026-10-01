@@ -29,14 +29,26 @@ function getDb() {
 
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
 
   if (req.method === 'OPTIONS') {
     return res.status(204).end();
   }
 
-  const { title = 'New Student Election', school = 'Our School', actor = 'Admin' } = req.body || {};
+  if (req.method !== 'POST') {
+    return res.status(405).json({ success: false, error: 'Method Not Allowed. Reset requires an authorized POST.' });
+  }
+
+  const { title = 'New Student Election', school = 'Our School', actor = 'Admin', confirmationKey } = req.body || {};
+
+  // Protection: Require explicit confirmation key so crawlers, GET requests, or random hits cannot wipe data!
+  if (confirmationKey !== 'CONFIRM_RESET_ELECTION') {
+    return res.status(403).json({
+      success: false,
+      error: 'Security Gate: Reset operation requires explicit confirmationKey parameter ("CONFIRM_RESET_ELECTION").',
+    });
+  }
 
   const cleanMetadata = {
     status: 'Setup',

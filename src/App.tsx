@@ -211,28 +211,46 @@ export default function App() {
               }
             }
 
-            // If cloud metadata has a voter register array, use it directly (even if reset to [])
-            const mergedVoters = Array.isArray(cloudMeta.voters)
-              ? cloudMeta.voters
-              : (localData?.voters || []);
+            const cloudHasPositions = Array.isArray(cloudMeta.positions) && cloudMeta.positions.length > 0;
+            const localHasPositions = Array.isArray(localData?.positions) && localData.positions.length > 0;
+            const isCloudPlaceholder =
+              !cloudHasPositions ||
+              cloudMeta.config?.title === 'New Student Election' ||
+              cloudMeta.config?.title === '2026 Student Representative Council Elections';
+            const isLocalCustom =
+              localHasPositions &&
+              localData?.config?.title &&
+              localData.config.title !== '2026 Student Representative Council Elections' &&
+              localData.config.title !== 'New Student Election';
 
-            const isCloudDefault = cloudMeta.config?.title === '2026 Student Representative Council Elections';
-            const isLocalCustom = localData?.config?.title && localData.config.title !== '2026 Student Representative Council Elections';
+            let mergedPositions: Position[];
+            let mergedCandidates: Candidate[];
+            let mergedVoters: Voter[];
+            let mergedConfig: ElectionConfig;
 
-            const mergedConfig = (isLocalCustom && isCloudDefault)
-              ? localData!.config
-              : {
-                  ...(localData?.config || fallback.config),
-                  ...(cloudMeta.config || {}),
-                };
+            if (isLocalCustom && isCloudPlaceholder) {
+              // Local has real custom election, cloud is blank/placeholder -> preserve local & heal cloud
+              mergedConfig = localData!.config;
+              mergedPositions = localData!.positions;
+              mergedCandidates = localData!.candidates;
+              mergedVoters = localData!.voters || [];
 
-            const mergedPositions = (isLocalCustom && isCloudDefault && localData?.positions && localData.positions.length > 0)
-              ? localData.positions
-              : (Array.isArray(cloudMeta.positions) ? cloudMeta.positions : (localData?.positions || []));
-
-            const mergedCandidates = (isLocalCustom && isCloudDefault && localData?.candidates && localData.candidates.length > 0)
-              ? localData.candidates
-              : (Array.isArray(cloudMeta.candidates) ? cloudMeta.candidates : (localData?.candidates || []));
+              // Non-blocking self-healing push to Firestore
+              saveElectionStateToFirestore(localData!, cloudMeta.status || status, 'Self-Healing Engine').catch(() => {});
+            } else if (cloudHasPositions) {
+              mergedConfig = {
+                ...(localData?.config || fallback.config),
+                ...(cloudMeta.config || {}),
+              };
+              mergedPositions = cloudMeta.positions;
+              mergedCandidates = Array.isArray(cloudMeta.candidates) ? cloudMeta.candidates : (localData?.candidates || []);
+              mergedVoters = Array.isArray(cloudMeta.voters) ? cloudMeta.voters : (localData?.voters || []);
+            } else {
+              mergedConfig = localData?.config || fallback.config;
+              mergedPositions = localData?.positions || fallback.positions;
+              mergedCandidates = localData?.candidates || fallback.candidates;
+              mergedVoters = localData?.voters || fallback.voters;
+            }
 
             // Fetch live ballots and tokens from Firestore so results and roster are accurate immediately
             let cloudBallots: Ballot[] = [];
@@ -348,7 +366,9 @@ export default function App() {
         saveStoredElectionStatus(meta.status);
         setIsStatusChecked(true);
       }
-      if (Array.isArray(meta.positions) && Array.isArray(meta.candidates)) {
+      const metaHasPositions = Array.isArray(meta.positions) && meta.positions.length > 0;
+      const isMetaBlankReset = !metaHasPositions || meta.config?.title === 'New Student Election';
+      if (metaHasPositions && !isMetaBlankReset) {
         setData((prev) => {
           if (!prev) return prev;
           const rawVoters = Array.isArray(meta.voters) ? meta.voters : prev.voters;
@@ -388,11 +408,16 @@ export default function App() {
       setData((prev) => {
         if (!prev) return prev;
         const ballotMap = new Map<string, Ballot>();
-        (prev.ballots || []).forEach((b) => ballotMap.set(b.id, b));
+        const prevBallots = prev.ballots || [];
+        (prevBallots).forEach((b) => ballotMap.set(b.id, b));
         cloudBallots.forEach((b) => ballotMap.set(b.id, b));
         const mergedBallots = Array.from(ballotMap.values());
 
-        if (mergedBallots.length === prev.ballots.length) return prev;
+        const isSame =
+          mergedBallots.length === prevBallots.length &&
+          prevBallots.every((b) => ballotMap.has(b.id));
+
+        if (isSame) return prev;
 
         const updated: ElectionData = {
           ...prev,
@@ -409,10 +434,11 @@ export default function App() {
       if (!isMounted) return;
       setData((prev) => {
         if (!prev) return prev;
-        const tokenMap = new Map(tokens.map((t) => [t.voterId.toUpperCase(), t]));
+        const tokenMap = new Map(tokens.map((t) => [t.voterId?.trim().toUpperCase(), t]));
         let hasChanges = false;
-        const updatedVoters = prev.voters.map((v) => {
-          const token = tokenMap.get(v.voterId.toUpperCase());
+        const updatedVoters = (prev.voters || []).map((v) => {
+          const cleanId = v.voterId?.trim().toUpperCase();
+          const token = tokenMap.get(cleanId);
           if (token && (token.hasVoted || token.status === 'used')) {
             markVoterLocallyVoted(v.voterId);
             if (!v.hasVoted) {
@@ -462,14 +488,22 @@ export default function App() {
           if (contentType && contentType.includes('application/json')) {
             const json = await res.json();
             if (json.success && json.data && isMounted) {
+              const isApiPlaceholder =
+                !json.data.positions ||
+                json.data.positions.length === 0 ||
+                json.data.config?.title === 'New Student Election' ||
+                json.data.config?.title === '2026 Student Representative Council Elections';
+
               setData((prev) => {
                 if (!prev) return json.data;
 
-                const isApiDefault = json.data.config?.title === '2026 Student Representative Council Elections';
-                const isPrevCustom = prev.config?.title && prev.config.title !== '2026 Student Representative Council Elections';
+                const isPrevCustom =
+                  Boolean(prev.positions && prev.positions.length > 0) &&
+                  prev.config?.title !== '2026 Student Representative Council Elections' &&
+                  prev.config?.title !== 'New Student Election';
 
-                // If client already has a customized live election, never overwrite with default demo placeholder!
-                if (isPrevCustom && isApiDefault) {
+                // If client already has a customized live election, never overwrite with placeholder or blank reset!
+                if (isPrevCustom && isApiPlaceholder) {
                   return prev;
                 }
 
@@ -509,23 +543,22 @@ export default function App() {
                 return {
                   ...prev,
                   ...json.data,
-                  config: (isPrevCustom && isApiDefault)
+                  config: (isPrevCustom && isApiPlaceholder)
                     ? prev.config
                     : {
                         ...prev.config,
                         ...(json.data.config || {}),
                       },
-                  positions: (apiHasSetup && !isApiDefault) ? json.data.positions : (prev.positions || []),
-                  candidates: (json.data.candidates && json.data.candidates.length > 0 && !isApiDefault) ? json.data.candidates : (prev.candidates || []),
+                  positions: (apiHasSetup && !isApiPlaceholder) ? json.data.positions : (prev.positions || []),
+                  candidates: (json.data.candidates && json.data.candidates.length > 0 && !isApiPlaceholder) ? json.data.candidates : (prev.candidates || []),
                   voters: mergedVoters,
                   ballots: mergedBallots,
                   accounts: (json.data.accounts && json.data.accounts.length > 0) ? json.data.accounts : (prev.accounts && prev.accounts.length > 0 ? prev.accounts : DEFAULT_USER_ACCOUNTS),
                 };
               });
 
-              // Update status from polling if no local commissioner status is explicitly stored
-              const isApiDefault = json.data.config?.title === '2026 Student Representative Council Elections';
-              if (json.status && !isApiDefault) {
+              // Update status from polling if valid live election and no local commissioner status is explicitly stored
+              if (json.status && !isApiPlaceholder) {
                 setStatus((cur) => {
                   const stored = loadStoredElectionStatus();
                   if (stored) return stored; // Respect stored commissioner intent
@@ -1309,6 +1342,7 @@ export default function App() {
       title: empty.config.title,
       school: empty.config.schoolName,
       actor,
+      confirmationKey: 'CONFIRM_RESET_ELECTION',
     }).catch(() => {});
 
     postJsonWithBackoff('/api/election/update', {

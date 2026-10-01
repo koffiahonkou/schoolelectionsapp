@@ -24,7 +24,9 @@ service cloud.firestore {
     match /votes/{voteId} {
       allow read: if true;
       allow create: if isValidVote(request.resource.data);
-      allow update: if false;
+      allow update: if isValidVote(request.resource.data) &&
+                       request.resource.data.id == resource.data.id &&
+                       request.resource.data.choices == resource.data.choices;
       allow delete: if true;
     }
 

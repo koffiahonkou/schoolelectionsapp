@@ -104,6 +104,8 @@ export default async function handler(req: any, res: any) {
       await setDoc(
         tokenRef,
         {
+          id: `token-${cleanId}`,
+          voterId: voterId.trim().toUpperCase(),
           hasVoted: true,
           votedAt: submittedAt,
           status: 'used',

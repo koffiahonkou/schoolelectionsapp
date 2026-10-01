@@ -45,60 +45,120 @@ export default async function handler(req: any, res: any) {
     try {
       const db = getDb();
       if (db) {
-        const { doc, getDoc, collection, getDocs } = require('firebase/firestore');
-        const timeoutPromise = new Promise<null>((r) => setTimeout(() => r(null), 2500));
+        const { doc, getDoc, collection, getDocs, setDoc } = require('firebase/firestore');
+        const timeoutPromise = new Promise<null>((r) => setTimeout(() => r(null), 4000));
         const snapPromise = getDoc(doc(db, 'election_metadata', 'current'));
         const snap = await Promise.race([snapPromise, timeoutPromise]);
+
+        // Load disk data for fallback / comparison
+        let diskData: any = null;
+        let diskStatus = 'Open';
+        try {
+          const dataFilePath = path.join(process.cwd(), 'data', 'election-data.json');
+          if (fs.existsSync(dataFilePath)) {
+            const fileContent = JSON.parse(fs.readFileSync(dataFilePath, 'utf8'));
+            diskData = fileContent.data || fileContent;
+            diskStatus = fileContent.status || 'Open';
+          }
+        } catch {
+          // ignore
+        }
+
+        // Fetch live votes from Firestore 'votes' collection
+        const liveBallots: any[] = [];
+        try {
+          const votesSnap = await getDocs(collection(db, 'votes'));
+          votesSnap.forEach((d: any) => {
+            const b = d.data();
+            liveBallots.push({
+              id: b.id || d.id,
+              choices: b.choices || {},
+              submittedAt: b.submittedAt || new Date().toISOString(),
+              isPractice: Boolean(b.isPractice),
+              evidenceHash: b.evidenceHash || undefined,
+            });
+          });
+        } catch (vErr) {
+          console.warn('Could not fetch votes in api/election:', vErr);
+        }
+
+        // Fetch live tokens from Firestore 'voter_tokens' collection
+        const tokenMap = new Map();
+        try {
+          const tokensSnap = await getDocs(collection(db, 'voter_tokens'));
+          tokensSnap.forEach((d: any) => tokenMap.set(d.data().voterId?.toUpperCase(), d.data()));
+        } catch (tErr) {
+          console.warn('Could not fetch tokens in api/election:', tErr);
+        }
+
         if (snap && snap.exists && snap.exists()) {
           const cloud = snap.data();
-          if (cloud.status) {
-            electionStatus = cloud.status;
-          }
-          if (cloud.positions || cloud.candidates || cloud.config) {
-            // Fetch live votes from Firestore 'votes' collection
-            const ballots: any[] = [];
-            try {
-              const votesSnap = await getDocs(collection(db, 'votes'));
-              votesSnap.forEach((d: any) => {
-                const b = d.data();
-                ballots.push({
-                  id: b.id || d.id,
-                  choices: b.choices || {},
-                  submittedAt: b.submittedAt || new Date().toISOString(),
-                  isPractice: Boolean(b.isPractice),
-                  evidenceHash: b.evidenceHash || undefined,
-                });
-              });
-            } catch (vErr) {
-              console.warn('Could not fetch votes in api/election:', vErr);
+          const cloudHasPositions = Array.isArray(cloud.positions) && cloud.positions.length > 0;
+          const isCloudBlankReset = !cloudHasPositions || cloud.config?.title === 'New Student Election';
+
+          if (!isCloudBlankReset) {
+            if (cloud.status) {
+              electionStatus = cloud.status;
+            } else if (cloud.config?.status) {
+              electionStatus = cloud.config.status === 'Active' ? 'Open' : cloud.config.status;
             }
 
-            // Fetch live voter token records to guarantee accurate participation on roster
-            let voters = cloud.voters || [];
-            try {
-              const tokensSnap = await getDocs(collection(db, 'voter_tokens'));
-              const tokenMap = new Map();
-              tokensSnap.forEach((d: any) => tokenMap.set(d.data().voterId?.toUpperCase(), d.data()));
-              voters = voters.map((v: any) => {
-                const t = tokenMap.get(v.voterId?.toUpperCase());
-                if (t && (t.hasVoted || t.status === 'used')) {
-                  return { ...v, hasVoted: true, votedAt: t.votedAt || v.votedAt };
-                }
-                return v;
-              });
-            } catch (tErr) {
-              console.warn('Could not fetch tokens in api/election:', tErr);
-            }
+            let voters = (Array.isArray(cloud.voters) && cloud.voters.length > 0)
+              ? cloud.voters
+              : (diskData?.voters || []);
+            voters = voters.map((v: any) => {
+              const cleanId = v.voterId?.trim().toUpperCase();
+              const t = tokenMap.get(cleanId);
+              if (v.hasVoted || (t && (t.hasVoted || t.status === 'used'))) {
+                return { ...v, hasVoted: true, votedAt: t?.votedAt || v.votedAt || new Date().toISOString() };
+              }
+              return v;
+            });
 
             electionPayload = {
               config: cloud.config,
-              positions: cloud.positions || [],
+              positions: cloud.positions,
               candidates: cloud.candidates || [],
               voters,
               accounts: cloud.accounts || [],
-              ballots,
+              ballots: liveBallots.length > 0 ? liveBallots : (Array.isArray(cloud.ballots) && cloud.ballots.length > 0 ? cloud.ballots : (diskData?.ballots || [])),
               auditLogs: [],
             };
+          } else if (diskData && Array.isArray(diskData.positions) && diskData.positions.length > 0) {
+            // Heal Firestore: Cloud has blank/reset placeholder, restore canonical disk data
+            console.log('[API] Healing blank Firestore election metadata with canonical disk election');
+            electionStatus = diskStatus;
+            let voters = diskData.voters || [];
+            voters = voters.map((v: any) => {
+              const t = tokenMap.get(v.voterId?.toUpperCase());
+              if (t && (t.hasVoted || t.status === 'used')) {
+                return { ...v, hasVoted: true, votedAt: t.votedAt || v.votedAt };
+              }
+              return v;
+            });
+
+            electionPayload = {
+              config: diskData.config,
+              positions: diskData.positions,
+              candidates: diskData.candidates || [],
+              voters,
+              accounts: diskData.accounts || [],
+              ballots: liveBallots.length > 0 ? liveBallots : (diskData.ballots || []),
+              auditLogs: [],
+            };
+
+            // Non-blocking restore to Firestore
+            setDoc(doc(db, 'election_metadata', 'current'), {
+              status: electionStatus,
+              config: electionPayload.config,
+              positions: electionPayload.positions,
+              candidates: electionPayload.candidates,
+              voters: electionPayload.voters,
+              accounts: electionPayload.accounts,
+              totalEligibleVoters: electionPayload.voters.length,
+              lastUpdated: new Date().toISOString(),
+              updatedBy: 'Self-Healing Engine (DESAG-UCC)',
+            }).catch(() => {});
           }
         }
       }

@@ -46,6 +46,8 @@ import {
 import { ElectionClock } from '../Common/ElectionClock';
 import {
   subscribeToAgentMonitoring,
+  subscribeToAnonymousVotes,
+  subscribeToVoterTokens,
   fetchVoterTokensOnce,
   fetchAnonymousVotesOnce,
   saveAnonymousVoteToFirestore,
@@ -57,6 +59,7 @@ import {
   FIREBASE_PROJECT_ID,
   FIRESTORE_DB_ID,
 } from '../../lib/firebaseVoting';
+import { getLocallyVotedVoterIds } from '../../utils/storage';
 
 interface AgentMonitoringViewProps {
   config: ElectionConfig;
@@ -202,15 +205,31 @@ export const AgentMonitoringView: React.FC<AgentMonitoringViewProps> = ({
       }
     );
 
-    // Poll anonymous votes every 45 seconds to stay updated without draining Spark Plan quotas
-    const votesPollingInterval = setInterval(() => {
-      if (document.hidden) return;
-      fetchAnonymousVotesOnce().then((votes) => {
-        if (isMounted && votes.length > 0) {
-          setFirestoreVotes(votes);
-        }
-      });
-    }, 45000);
+    // Subscribe to live anonymous votes so agent monitor immediately receives votes deposited on other devices
+    const unsubscribeVotes = subscribeToAnonymousVotes(
+      (votes) => {
+        if (!isMounted) return;
+        setFirestoreVotes(votes);
+        setIsStreamActive(true);
+      },
+      (err) => {
+        if (!isMounted) return;
+        console.warn('Firestore votes listener warning:', err);
+      }
+    );
+
+    // Subscribe to live voter tokens so participation counters immediately sync with other devices
+    const unsubscribeTokens = subscribeToVoterTokens(
+      (tokens) => {
+        if (!isMounted) return;
+        setFirestoreTokens(tokens);
+        setIsStreamActive(true);
+      },
+      (err) => {
+        if (!isMounted) return;
+        console.warn('Firestore voter tokens listener warning:', err);
+      }
+    );
 
     // Minor latency heartbeat indicator
     const latencyInterval = setInterval(() => {
@@ -223,24 +242,19 @@ export const AgentMonitoringView: React.FC<AgentMonitoringViewProps> = ({
     return () => {
       isMounted = false;
       unsubscribeAgents();
-      clearInterval(votesPollingInterval);
+      unsubscribeVotes();
+      unsubscribeTokens();
       clearInterval(latencyInterval);
     };
   }, [refreshFirestoreData]);
 
-  // Derive active ballots for live monitoring
+  // Derive active ballots for live monitoring (harmonized with Results page)
   const activeBallots = useMemo(() => {
-    // 1. If election is in Setup mode, voting has not started - strictly zero ballots
-    if (status === 'Setup') {
-      return [];
-    }
-    // 2. If real-time stream is active, strictly reflect Firestore live votes
-    if (isStreamActive) {
-      return firestoreVotes;
-    }
-    // 3. Offline fallback when disconnected from Firestore
-    return initialBallots;
-  }, [firestoreVotes, initialBallots, isStreamActive, status]);
+    const ballotMap = new Map<string, Ballot>();
+    (initialBallots || []).forEach((b) => ballotMap.set(b.id, b));
+    (firestoreVotes || []).forEach((b) => ballotMap.set(b.id, b));
+    return Array.from(ballotMap.values());
+  }, [firestoreVotes, initialBallots]);
 
   // Compute tallies strictly for percentage derivation
   const report = useMemo(() => {
@@ -446,12 +460,22 @@ export const AgentMonitoringView: React.FC<AgentMonitoringViewProps> = ({
     return null;
   };
 
-  // Voter tokens metrics
-  const tokensTotal = firestoreTokens.length > 0 ? firestoreTokens.length : voters.length;
-  const tokensUsed = firestoreTokens.length > 0
-    ? firestoreTokens.filter((t) => t.hasVoted || t.status === 'used').length
-    : voters.filter((v) => v.hasVoted).length;
-  const tokenTurnoutPct = tokensTotal > 0 ? Math.round((tokensUsed / tokensTotal) * 100) : 0;
+  // Voter tokens metrics: Harmonized with Voter Roster and Results
+  const tokensTotal = voters.length;
+  const tokenMap = useMemo(
+    () => new Map(firestoreTokens.map((t) => [t.voterId?.trim().toUpperCase(), t])),
+    [firestoreTokens]
+  );
+  const localVotedIds = useMemo(() => getLocallyVotedVoterIds(), []);
+  const tokensUsed = useMemo(() => {
+    return voters.filter((v) => {
+      const cleanId = v.voterId?.trim().toUpperCase();
+      const t = tokenMap.get(cleanId);
+      return Boolean(v.hasVoted || localVotedIds.has(cleanId) || (t && (t.hasVoted || t.status === 'used')));
+    }).length;
+  }, [voters, tokenMap, localVotedIds]);
+  const tokenTurnoutPct =
+    tokensTotal > 0 ? Number(((tokensUsed / tokensTotal) * 100).toFixed(1)) : 0;
 
   return (
     <div id="agent-monitoring-portal" className="min-h-[calc(100vh-5rem)] bg-slate-100/50 dark:bg-slate-950/65 backdrop-blur-[2px] pb-16 transition-colors duration-200">

@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { UserAccount, Voter } from '../../../types';
 import { normalizeVoterId } from '../../../utils/normalization';
-import { downloadCSV } from '../../../utils/storage';
+import { downloadCSV, getLocallyVotedVoterIds } from '../../../utils/storage';
 import {
   generate8DigitVoterCode,
   generateUniqueVoterCode,
@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { ConfirmModal } from '../../Common/ConfirmModal';
 import { VoterQrCardsModal } from '../VoterQrCardsModal';
-import { syncVoterRosterToFirestoreTokens } from '../../../lib/firebaseVoting';
+import { syncVoterRosterToFirestoreTokens, subscribeToVoterTokens, VoterTokenRecord } from '../../../lib/firebaseVoting';
 
 interface VoterRosterTabProps {
   voters: Voter[];
@@ -114,9 +114,38 @@ export const VoterRosterTab: React.FC<VoterRosterTabProps> = ({
     }
   };
 
-  // Statistics
+  // Real-time Firestore voter tokens subscriber
+  const [liveTokens, setLiveTokens] = useState<VoterTokenRecord[]>([]);
+
+  useEffect(() => {
+    const unsub = subscribeToVoterTokens((tokens) => {
+      setLiveTokens(tokens);
+    });
+    return () => unsub();
+  }, []);
+
+  const tokenMap = useMemo(() => {
+    return new Map(liveTokens.map((t) => [t.voterId?.trim().toUpperCase(), t]));
+  }, [liveTokens]);
+
+  const localVotedIds = useMemo(() => getLocallyVotedVoterIds(), []);
+
+  const isVoterCast = useCallback(
+    (voter: Voter) => {
+      const cleanId = voter.voterId?.trim().toUpperCase();
+      const token = tokenMap.get(cleanId);
+      return Boolean(
+        voter.hasVoted ||
+        localVotedIds.has(cleanId) ||
+        (token && (token.hasVoted || token.status === 'used'))
+      );
+    },
+    [tokenMap, localVotedIds]
+  );
+
+  // Statistics - fully harmonized with Results and Agent Monitor
   const totalVoters = voters.length;
-  const votedCount = voters.filter((v) => v.hasVoted).length;
+  const votedCount = voters.filter(isVoterCast).length;
   const remainingCount = totalVoters - votedCount;
   const turnoutPercent =
     totalVoters > 0 ? ((votedCount / totalVoters) * 100).toFixed(1) : '0.0';
@@ -133,8 +162,8 @@ export const VoterRosterTab: React.FC<VoterRosterTabProps> = ({
 
     if (!matchesSearch) return false;
 
-    if (statusFilter === 'VOTED') return voter.hasVoted;
-    if (statusFilter === 'NOT_VOTED') return !voter.hasVoted;
+    if (statusFilter === 'VOTED') return isVoterCast(voter);
+    if (statusFilter === 'NOT_VOTED') return !isVoterCast(voter);
     return true;
   });
 
@@ -863,6 +892,10 @@ export const VoterRosterTab: React.FC<VoterRosterTabProps> = ({
               ) : (
                 filteredVoters.map((voter, index) => {
                   const isCopied = copiedPin === voter.pin;
+                  const isVoted = isVoterCast(voter);
+                  const effectiveVotedAt =
+                    voter.votedAt ||
+                    tokenMap.get(voter.voterId?.trim().toUpperCase())?.votedAt;
 
                   return (
                     <tr
@@ -901,7 +934,7 @@ export const VoterRosterTab: React.FC<VoterRosterTabProps> = ({
                         </div>
                       </td>
                       <td className="py-3 px-4 print:border print:border-black">
-                        {voter.hasVoted ? (
+                        {isVoted ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-2xs font-extrabold uppercase bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 print:border-black print:text-black print:bg-gray-200">
                             <Check className="w-3 h-3" />
                             Voted
@@ -913,8 +946,8 @@ export const VoterRosterTab: React.FC<VoterRosterTabProps> = ({
                         )}
                       </td>
                       <td className="py-3 px-4 text-slate-500 dark:text-slate-400 font-medium print:border print:border-black print:text-black">
-                        {voter.votedAt ? (
-                          new Date(voter.votedAt).toLocaleTimeString([], {
+                        {effectiveVotedAt ? (
+                          new Date(effectiveVotedAt).toLocaleTimeString([], {
                             hour: '2-digit',
                             minute: '2-digit',
                           })
@@ -925,12 +958,12 @@ export const VoterRosterTab: React.FC<VoterRosterTabProps> = ({
 
                       {/* Print-only check-in signature column for polling station clerk */}
                       <td className="hidden print:table-cell py-3 px-4 border border-black text-center">
-                        {voter.hasVoted ? 'BALLOT CAST' : ''}
+                        {isVoted ? 'BALLOT CAST' : ''}
                       </td>
 
                       {/* Web-only Actions column: STRICTLY NO ACTIONS FOR VOTERS WITH 'VOTED' STATUS */}
                       <td className="py-3 px-4 text-right print:hidden">
-                        {voter.hasVoted ? (
+                        {isVoted ? (
                           // Rule: Under the voter register, remove any action for voters with "VOTED" status.
                           <span
                             id={`voter-locked-badge-${voter.id}`}

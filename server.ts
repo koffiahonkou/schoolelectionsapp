@@ -52,6 +52,8 @@ async function syncWithFirestore() {
       const cloud = snap.data();
       if (cloud.status) {
         electionStatus = cloud.status;
+      } else if (cloud.config?.status) {
+        electionStatus = cloud.config.status === 'Active' ? 'Open' : cloud.config.status;
       }
       if (cloud.config || cloud.positions) {
         // Fetch votes from Firestore
@@ -77,11 +79,12 @@ async function syncWithFirestore() {
         try {
           const tokensSnap = await getDocs(collection(db, 'voter_tokens'));
           const tokenMap = new Map();
-          tokensSnap.forEach((d: any) => tokenMap.set(d.data().voterId?.toUpperCase(), d.data()));
+          tokensSnap.forEach((d: any) => tokenMap.set(d.data().voterId?.trim().toUpperCase(), d.data()));
           voters = voters.map((v: Voter) => {
-            const t = tokenMap.get(v.voterId?.toUpperCase());
-            if (t && (t.hasVoted || t.status === 'used')) {
-              return { ...v, hasVoted: true, votedAt: t.votedAt || v.votedAt };
+            const cleanId = v.voterId?.trim().toUpperCase();
+            const t = tokenMap.get(cleanId);
+            if (v.hasVoted || (t && (t.hasVoted || t.status === 'used'))) {
+              return { ...v, hasVoted: true, votedAt: t?.votedAt || v.votedAt || new Date().toISOString() };
             }
             return v;
           });
@@ -89,17 +92,38 @@ async function syncWithFirestore() {
           console.warn('[Server] Could not fetch tokens from Firestore:', tErr);
         }
 
-        electionData = {
-          ...electionData,
-          config: cloud.config ? { ...electionData.config, ...cloud.config } : electionData.config,
-          positions: Array.isArray(cloud.positions) ? cloud.positions : electionData.positions,
-          candidates: Array.isArray(cloud.candidates) ? cloud.candidates : electionData.candidates,
-          voters,
-          accounts: Array.isArray(cloud.accounts) && cloud.accounts.length > 0 ? cloud.accounts : electionData.accounts,
-          ballots: liveBallots.length > 0 ? liveBallots : electionData.ballots,
-        };
-        saveElectionToDisk();
-        console.log(`[Server] Synchronized with Firestore: "${electionData.config.title}" (${electionData.ballots.length} ballots, Status: ${electionStatus})`);
+        const cloudHasPositions = Array.isArray(cloud.positions) && cloud.positions.length > 0;
+        const cloudHasCandidates = Array.isArray(cloud.candidates) && cloud.candidates.length > 0;
+        const isCloudBlankReset = !cloudHasPositions || cloud.config?.title === 'New Student Election';
+
+        if (!isCloudBlankReset) {
+          electionData = {
+            ...electionData,
+            config: cloud.config ? { ...electionData.config, ...cloud.config } : electionData.config,
+            positions: cloud.positions,
+            candidates: cloudHasCandidates ? cloud.candidates : electionData.candidates,
+            voters,
+            accounts: Array.isArray(cloud.accounts) && cloud.accounts.length > 0 ? cloud.accounts : electionData.accounts,
+            ballots: liveBallots.length > 0 ? liveBallots : electionData.ballots,
+          };
+          saveElectionToDisk();
+          console.log(`[Server] Synchronized with Firestore: "${electionData.config.title}" (${electionData.ballots.length} ballots, Status: ${electionStatus})`);
+        } else if (electionData.positions && electionData.positions.length > 0) {
+          // Cloud has blank/placeholder, heal Firestore with canonical server state
+          console.log('[Server] Restoring canonical election metadata to Firestore...');
+          const { setDoc } = require('firebase/firestore');
+          setDoc(doc(db, 'election_metadata', 'current'), {
+            status: electionStatus,
+            config: electionData.config,
+            positions: electionData.positions,
+            candidates: electionData.candidates,
+            voters: electionData.voters,
+            accounts: electionData.accounts,
+            totalEligibleVoters: electionData.voters.length,
+            lastUpdated: new Date().toISOString(),
+            updatedBy: 'Self-Healing Engine (DESAG-UCC)',
+          }, { merge: true }).catch(() => {});
+        }
       }
     }
   } catch (err: any) {

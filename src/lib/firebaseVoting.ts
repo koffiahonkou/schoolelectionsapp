@@ -331,7 +331,7 @@ export function subscribeToAnonymousVotes(
   onError?: (err: Error) => void
 ): Unsubscribe {
   try {
-    const votesQuery = query(collection(db, 'votes'), orderBy('submittedAt', 'asc'));
+    const votesQuery = query(collection(db, 'votes'));
     return onSnapshot(
       votesQuery,
       (snapshot) => {
@@ -346,6 +346,7 @@ export function subscribeToAnonymousVotes(
             evidenceHash: data.evidenceHash || undefined,
           });
         });
+        ballots.sort((a, b) => new Date(a.submittedAt).getTime() - new Date(b.submittedAt).getTime());
         onVotesUpdate(ballots);
       },
       (err) => {
@@ -625,7 +626,9 @@ export async function getElectionMetadataFromFirestore(): Promise<{
   try {
     const snap = await getDoc(metaRef);
     if (snap.exists()) {
-      return snap.data() as any;
+      const data = snap.data();
+      const resolvedStatus = data.status || (data.config?.status === 'Active' ? 'Open' : data.config?.status);
+      return { ...data, status: resolvedStatus } as any;
     }
     return null;
   } catch {
@@ -633,7 +636,9 @@ export async function getElectionMetadataFromFirestore(): Promise<{
     try {
       const cacheSnap = await getDocFromCache(metaRef);
       if (cacheSnap.exists()) {
-        return cacheSnap.data() as any;
+        const data = cacheSnap.data();
+        const resolvedStatus = data.status || (data.config?.status === 'Active' ? 'Open' : data.config?.status);
+        return { ...data, status: resolvedStatus } as any;
       }
     } catch {
       // Local cache empty or pending
@@ -666,8 +671,9 @@ export function subscribeToElectionMetadata(
       (snapshot) => {
         if (snapshot.exists()) {
           const data = snapshot.data();
+          const resolvedStatus = data.status || (data.config?.status === 'Active' ? 'Open' : data.config?.status);
           onMetadataUpdate({
-            status: data.status,
+            status: resolvedStatus,
             config: data.config,
             positions: data.positions,
             candidates: data.candidates,
