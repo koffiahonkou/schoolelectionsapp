@@ -16,13 +16,13 @@ function getDb() {
       }
     }
 
-    const apiKey = process.env.VITE_FIREBASE_API_KEY || config?.apiKey;
-    const projectId = process.env.VITE_FIREBASE_PROJECT_ID || config?.projectId;
-    const authDomain = process.env.VITE_FIREBASE_AUTH_DOMAIN || config?.authDomain;
-    const storageBucket = process.env.VITE_FIREBASE_STORAGE_BUCKET || config?.storageBucket;
-    const messagingSenderId = process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || config?.messagingSenderId;
-    const appId = process.env.VITE_FIREBASE_APP_ID || config?.appId;
-    const firestoreDatabaseId = process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || config?.firestoreDatabaseId;
+    const apiKey = process.env.VITE_FIREBASE_API_KEY || process.env.FIREBASE_API_KEY || config?.apiKey;
+    const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || config?.projectId;
+    const authDomain = process.env.VITE_FIREBASE_AUTH_DOMAIN || process.env.FIREBASE_AUTH_DOMAIN || config?.authDomain;
+    const storageBucket = process.env.VITE_FIREBASE_STORAGE_BUCKET || process.env.FIREBASE_STORAGE_BUCKET || config?.storageBucket;
+    const messagingSenderId = process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || process.env.FIREBASE_MESSAGING_SENDER_ID || config?.messagingSenderId;
+    const appId = process.env.VITE_FIREBASE_APP_ID || process.env.FIREBASE_APP_ID || config?.appId;
+    const firestoreDatabaseId = process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || process.env.FIREBASE_FIRESTORE_DATABASE_ID || config?.firestoreDatabaseId;
 
     if (apiKey && projectId) {
       const { initializeApp, getApps, getApp } = require('firebase/app');

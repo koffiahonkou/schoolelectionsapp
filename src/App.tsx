@@ -164,11 +164,18 @@ export default function App() {
       let cloudStatusVerified = false;
 
       // 1. IMMEDIATELY LOAD LOCAL PERSISTENCE (IndexedDB / localStorage)
-      // This ensures that user-imported voter registers, candidates, and custom settings
-      // are never overwritten by static serverless defaults or network delays!
+      // If local storage has the old mock data ("Accra Academy" or 35 students), ignore it!
       let localData: ElectionData | null = null;
       try {
         localData = await loadElectionData();
+        if (
+          localData &&
+          (localData.config?.schoolName === 'Accra Academy Senior High School' ||
+            localData.config?.title === '2026 Student Representative Council Elections' ||
+            (Array.isArray(localData.voters) && localData.voters.length === 35))
+        ) {
+          localData = null;
+        }
         if (localData && isMounted) {
           setData(localData);
           resolvedData = true;
@@ -181,7 +188,7 @@ export default function App() {
         console.warn('[Storage] Could not load from local IndexedDB:', err);
       }
 
-      // Safety timeout: Ensure the app finishes initial status check within 4 seconds
+      // Safety timeout: Ensure the app finishes initial status check within 10 seconds
       const safetyTimeout = setTimeout(() => {
         if (isMounted) {
           if (!resolvedData) {
@@ -194,12 +201,12 @@ export default function App() {
           }
           setIsStatusChecked(true);
         }
-      }, 4000);
+      }, 10000);
 
       // 2. CHECK CANONICAL FIREBASE 'election_metadata' CLOUD STATE
       // Allows multi-device real-time sync across Vercel, mobile stations, and admin laptops
       try {
-        const timeoutPromise = new Promise<null>((res) => setTimeout(() => res(null), 3500));
+        const timeoutPromise = new Promise<null>((res) => setTimeout(() => res(null), 10000));
         const cloudMeta = await Promise.race([getElectionMetadataFromFirestore(), timeoutPromise]);
 
         if (cloudMeta && isMounted) {
@@ -254,11 +261,16 @@ export default function App() {
               mergedPositions = cloudMeta.positions;
               mergedCandidates = Array.isArray(cloudMeta.candidates) ? cloudMeta.candidates : (localData?.candidates || []);
               mergedVoters = Array.isArray(cloudMeta.voters) ? cloudMeta.voters : (localData?.voters || []);
+            } else if (localHasPositions) {
+              mergedConfig = localData!.config;
+              mergedPositions = localData!.positions;
+              mergedCandidates = localData!.candidates;
+              mergedVoters = localData!.voters || [];
             } else {
-              mergedConfig = localData?.config || fallback.config;
-              mergedPositions = localData?.positions || fallback.positions;
-              mergedCandidates = localData?.candidates || fallback.candidates;
-              mergedVoters = localData?.voters || fallback.voters;
+              mergedConfig = cloudMeta.config || fallback.config;
+              mergedPositions = cloudMeta.positions || [];
+              mergedCandidates = cloudMeta.candidates || [];
+              mergedVoters = Array.isArray(cloudMeta.voters) ? cloudMeta.voters : [];
             }
 
             // Fetch live ballots and tokens from Firestore so results and roster are accurate immediately
