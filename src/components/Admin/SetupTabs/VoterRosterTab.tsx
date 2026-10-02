@@ -28,7 +28,12 @@ import {
 } from 'lucide-react';
 import { ConfirmModal } from '../../Common/ConfirmModal';
 import { VoterQrCardsModal } from '../VoterQrCardsModal';
-import { syncVoterRosterToFirestoreTokens, subscribeToVoterTokens, VoterTokenRecord } from '../../../lib/firebaseVoting';
+import {
+  syncVoterRosterToFirestoreTokens,
+  subscribeToElectionStats,
+  ElectionStatsRecord,
+  VoterTokenRecord,
+} from '../../../lib/firebaseVoting';
 
 interface VoterRosterTabProps {
   voters: Voter[];
@@ -114,41 +119,39 @@ export const VoterRosterTab: React.FC<VoterRosterTabProps> = ({
     }
   };
 
-  // Real-time Firestore voter tokens subscriber
-  const [liveTokens, setLiveTokens] = useState<VoterTokenRecord[]>([]);
+  // Real-time Firestore election stats subscriber (Quota optimized: 1 doc read!)
+  const [electionStats, setElectionStats] = useState<ElectionStatsRecord | null>(null);
 
   useEffect(() => {
-    const unsub = subscribeToVoterTokens((tokens) => {
-      setLiveTokens(tokens);
+    const unsub = subscribeToElectionStats((stats) => {
+      setElectionStats(stats);
     });
     return () => unsub();
   }, []);
-
-  const tokenMap = useMemo(() => {
-    return new Map(liveTokens.map((t) => [t.voterId?.trim().toUpperCase(), t]));
-  }, [liveTokens]);
 
   const localVotedIds = useMemo(() => getLocallyVotedVoterIds(), []);
 
   const isVoterCast = useCallback(
     (voter: Voter) => {
       const cleanId = voter.voterId?.trim().toUpperCase();
-      const token = tokenMap.get(cleanId);
-      return Boolean(
-        voter.hasVoted ||
-        localVotedIds.has(cleanId) ||
-        (token && (token.hasVoted || token.status === 'used'))
-      );
+      return Boolean(voter.hasVoted || localVotedIds.has(cleanId));
     },
-    [tokenMap, localVotedIds]
+    [localVotedIds]
   );
 
   // Statistics - fully harmonized with Results and Agent Monitor
-  const totalVoters = voters.length;
-  const votedCount = voters.filter(isVoterCast).length;
-  const remainingCount = totalVoters - votedCount;
+  const totalVoters = electionStats?.totalEligibleVoters || voters.length;
+  const votedCount =
+    electionStats?.totalVotesCast !== undefined && electionStats.totalVotesCast > 0
+      ? electionStats.totalVotesCast
+      : voters.filter(isVoterCast).length;
+  const remainingCount = Math.max(0, totalVoters - votedCount);
   const turnoutPercent =
-    totalVoters > 0 ? ((votedCount / totalVoters) * 100).toFixed(1) : '0.0';
+    electionStats?.turnoutPercentage !== undefined && electionStats.turnoutPercentage > 0
+      ? electionStats.turnoutPercentage.toFixed(1)
+      : totalVoters > 0
+      ? ((votedCount / totalVoters) * 100).toFixed(1)
+      : '0.0';
   const votersWithPinCount = voters.filter((v) => v.pin && v.pin.trim().length >= 4).length;
 
   // Filtered list
@@ -893,9 +896,7 @@ export const VoterRosterTab: React.FC<VoterRosterTabProps> = ({
                 filteredVoters.map((voter, index) => {
                   const isCopied = copiedPin === voter.pin;
                   const isVoted = isVoterCast(voter);
-                  const effectiveVotedAt =
-                    voter.votedAt ||
-                    tokenMap.get(voter.voterId?.trim().toUpperCase())?.votedAt;
+                  const effectiveVotedAt = voter.votedAt;
 
                   return (
                     <tr

@@ -6,7 +6,6 @@ service cloud.firestore {
     function isValidVote(data) {
       return data.id is string &&
              data.choices is map &&
-             data.submittedAt is string &&
              data.isPractice is bool &&
              // STRICT BALLOT SECRECY: Ballot document MUST NOT contain voter personal identity
              !('voterId' in data) &&
@@ -16,39 +15,49 @@ service cloud.firestore {
              !('pin' in data);
     }
 
-    // 1. Anonymous Cast Ballots Collection
-    // Read: Allowed for real-time live monitoring and tallying.
-    // Create: Allowed if anonymous and properly structured.
-    // Update: STRICTLY FORBIDDEN to ensure ballot immutability.
-    // Delete: Allowed during authorized system clear / fresh cycle reset.
+    // 1. Aggregated Election Stats Document
+    // Read: Allowed for everyone (dramatically reduces client real-time reads to just 1 doc!)
+    // Write: Allowed for transaction increments & admin initialization
+    match /election_stats/{docId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // 2. Anonymous Cast Ballots Collection
+    // Read: Allowed (ballots are strictly secret & anonymous without PII)
+    // Create: Allowed if anonymous and properly structured
+    // Update/Delete: Forbidden to ensure ballot immutability
     match /votes/{voteId} {
       allow read: if true;
       allow create: if isValidVote(request.resource.data);
-      allow update: if isValidVote(request.resource.data) &&
-                       request.resource.data.id == resource.data.id &&
-                       request.resource.data.choices == resource.data.choices;
-      allow delete: if true;
+      allow update, delete: if false;
     }
 
-    // 2. Voter Tokens Collection
-    // Used for one-time token authorization and tracking voting participation.
+    // 3. Registered Voters Collection
+    match /voters/{voterId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if false;
+    }
+
+    // 4. Voter Tokens Collection
     match /voter_tokens/{tokenId} {
       allow read: if true;
       allow create, update: if true;
-      allow delete: if true;
+      allow delete: if false;
     }
 
-    // 3. Live Agent Monitoring Collection
-    // Real-time telemetry, observer heartbeats, and check-ins for candidate agents.
+    // 5. Live Agent Monitoring Collection
     match /agent_monitoring/{agentId} {
       allow read: if true;
       allow write: if true;
     }
 
-    // 4. Election Metadata and Status Sync
+    // 6. Election Metadata and Status Sync
     match /election_metadata/{docId} {
       allow read: if true;
       allow write: if true;
     }
   }
 }
+

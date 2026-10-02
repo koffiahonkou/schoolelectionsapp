@@ -29,11 +29,32 @@ function getDb() {
     if (fs.existsSync(configPath)) {
       config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     }
-    if (config) {
+
+    const apiKey = process.env.VITE_FIREBASE_API_KEY || config?.apiKey;
+    const projectId = process.env.VITE_FIREBASE_PROJECT_ID || config?.projectId;
+    const authDomain = process.env.VITE_FIREBASE_AUTH_DOMAIN || config?.authDomain;
+    const storageBucket = process.env.VITE_FIREBASE_STORAGE_BUCKET || config?.storageBucket;
+    const messagingSenderId = process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || config?.messagingSenderId;
+    const appId = process.env.VITE_FIREBASE_APP_ID || config?.appId;
+    const firestoreDatabaseId = process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || config?.firestoreDatabaseId;
+
+    if (apiKey && projectId) {
       const { initializeApp, getApps, getApp } = require('firebase/app');
       const { getFirestore } = require('firebase/firestore');
-      const app = getApps().length > 0 ? getApp() : initializeApp(config);
-      firestoreDb = getFirestore(app, config.firestoreDatabaseId);
+      const app =
+        getApps().length > 0
+          ? getApp()
+          : initializeApp({
+              apiKey,
+              projectId,
+              authDomain,
+              storageBucket,
+              messagingSenderId,
+              appId,
+            });
+      firestoreDb = firestoreDatabaseId && firestoreDatabaseId !== '(default)'
+        ? getFirestore(app, firestoreDatabaseId)
+        : getFirestore(app);
     }
   } catch {
     // ignore
@@ -1033,24 +1054,45 @@ async function startServer() {
                 { merge: true }
               );
 
-              // Update election_metadata voter array
+              // Also update voters collection
               try {
-                const metaRef = doc(db, 'election_metadata', 'current');
-                const metaSnap = await getDoc(metaRef);
-                if (metaSnap.exists()) {
-                  const meta = metaSnap.data();
-                  if (Array.isArray(meta.voters)) {
-                    const updatedVoters = meta.voters.map((v: any) =>
-                      v.voterId?.trim().toUpperCase() === voterId.trim().toUpperCase()
-                        ? { ...v, hasVoted: true, votedAt: newBallot.submittedAt }
-                        : v
-                    );
-                    await updateDoc(metaRef, { voters: updatedVoters, lastUpdated: new Date().toISOString() });
+                await setDoc(
+                  doc(db, 'voters', cleanId),
+                  {
+                    hasVoted: true,
+                    votedAt: newBallot.submittedAt,
+                  },
+                  { merge: true }
+                );
+              } catch {}
+
+              // Update election_stats/current
+              try {
+                const statsRef = doc(db, 'election_stats', 'current');
+                const statsSnap = await getDoc(statsRef);
+                const sData = statsSnap.exists() ? statsSnap.data() : {};
+                const currentVotes = sData.totalVotesCast || 0;
+                const totalEligible = sData.totalEligibleVoters || 389;
+                const newVotes = currentVotes + 1;
+                const newTurnout = Math.round((newVotes / totalEligible) * 1000) / 10;
+                const candVotes = { ...(sData.candidateVotes || {}) };
+                for (const [, cId] of Object.entries(newBallot.choices || {})) {
+                  if (cId && cId !== 'ABSTAIN') {
+                    candVotes[cId as string] = (candVotes[cId as string] || 0) + 1;
                   }
                 }
-              } catch {
-                // ignore
-              }
+                await setDoc(
+                  statsRef,
+                  {
+                    totalVotesCast: newVotes,
+                    turnoutPercentage: newTurnout,
+                    lastVoteAt: newBallot.submittedAt,
+                    candidateVotes: candVotes,
+                    updatedAt: new Date().toISOString(),
+                  },
+                  { merge: true }
+                );
+              } catch {}
             }
           }
         } catch (mirrorErr) {

@@ -11,11 +11,34 @@ import {
   orderBy,
   Unsubscribe,
   writeBatch,
+  runTransaction,
+  increment,
+  serverTimestamp,
+  getCountFromServer,
+  Timestamp,
 } from 'firebase/firestore';
 import { db, FIREBASE_PROJECT_ID, FIRESTORE_DB_ID } from './firebase';
 import { Ballot, Voter, ElectionData, ElectionStatus } from '../types';
 
 export { FIREBASE_PROJECT_ID, FIRESTORE_DB_ID };
+
+export interface ElectionStatsRecord {
+  totalEligibleVoters: number;
+  totalVotesCast: number;
+  turnoutPercentage: number;
+  lastVoteAt: string | null;
+  candidateVotes?: Record<string, number>;
+  positionTallies?: Record<
+    string,
+    {
+      totalVotes: number;
+      validVotes: number;
+      abstainVotes: number;
+      candidateCounts: Record<string, number>;
+    }
+  >;
+  updatedAt?: any;
+}
 
 export interface AgentObserverRecord {
   id: string;
@@ -38,6 +61,254 @@ export interface VoterTokenRecord {
   status: 'active' | 'used' | 'revoked';
   issuedAt: string;
 }
+
+/**
+ * Executes an atomic Firestore runTransaction to cast an official ballot:
+ * 1. Reads the voter's document to ensure they have not already voted.
+ * 2. Marks the voter's document with hasVoted: true and server votedAt timestamp.
+ * 3. Creates an anonymous cast ballot in the 'votes' collection (no personal identity).
+ * 4. Reads and increments totalVotesCast and candidate vote counts in election_stats/current.
+ * 5. Updates turnout percentage and commits atomically.
+ */
+export async function submitVoteTransaction(
+  voterId: string,
+  passcode: string,
+  choices: Record<string, string>,
+  isPractice: boolean = false
+): Promise<{ success: boolean; error?: string; ballotId?: string }> {
+  // Practice votes do not touch real voter documents or real stats
+  if (isPractice) {
+    const practiceId = `practice-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    return { success: true, ballotId: practiceId };
+  }
+
+  const cleanId = voterId.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '_');
+  const voterRef = doc(db, 'voters', cleanId);
+  const tokenRef = doc(db, 'voter_tokens', `token-${cleanId}`);
+  const statsRef = doc(db, 'election_stats', 'current');
+  const ballotId = `bal-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+  const voteRef = doc(db, 'votes', ballotId);
+
+  try {
+    const result = await runTransaction(db, async (transaction) => {
+      // 1. Read voter document in transaction
+      const voterDoc = await transaction.get(voterRef);
+      let voterData: any = null;
+
+      if (voterDoc.exists()) {
+        voterData = voterDoc.data();
+      } else {
+        // Fallback: check voter_tokens doc
+        const tokenDoc = await transaction.get(tokenRef);
+        if (tokenDoc.exists()) {
+          voterData = tokenDoc.data();
+        } else {
+          throw new Error(`Student ID (${voterId.trim()}) was not found on the registered voter roll.`);
+        }
+      }
+
+      // Check if voter has already voted
+      if (voterData.hasVoted || voterData.status === 'used') {
+        throw new Error(
+          `This Student ID (${voterId.trim()}) has already cast an official ballot. Only one ballot is permitted per student.`
+        );
+      }
+
+      // Validate PIN/passcode if provided
+      if (
+        passcode &&
+        voterData.pin &&
+        passcode.trim().toUpperCase() !== voterData.pin.trim().toUpperCase()
+      ) {
+        throw new Error('Invalid security PIN provided for this student ID.');
+      }
+      if (
+        passcode &&
+        voterData.token &&
+        passcode.trim().toUpperCase() !== voterData.token.trim().toUpperCase()
+      ) {
+        throw new Error('Invalid security PIN provided for this student ID.');
+      }
+
+      // 2. Read election_stats/current document
+      const statsDoc = await transaction.get(statsRef);
+      const statsData = statsDoc.exists() ? statsDoc.data() : {};
+      const currentTotalVotes = statsData.totalVotesCast || 0;
+      const totalEligible = statsData.totalEligibleVoters || 389;
+      const newTotalVotes = currentTotalVotes + 1;
+      const newTurnout = Math.round((newTotalVotes / totalEligible) * 1000) / 10;
+
+      // Update candidate votes and position tallies
+      const candidateVotes = { ...(statsData.candidateVotes || {}) };
+      const positionTallies = { ...(statsData.positionTallies || {}) };
+
+      for (const [posId, candId] of Object.entries(choices)) {
+        if (!positionTallies[posId]) {
+          positionTallies[posId] = {
+            totalVotes: 0,
+            validVotes: 0,
+            abstainVotes: 0,
+            candidateCounts: {},
+          };
+        }
+        positionTallies[posId].totalVotes = (positionTallies[posId].totalVotes || 0) + 1;
+
+        if (candId === 'ABSTAIN') {
+          positionTallies[posId].abstainVotes = (positionTallies[posId].abstainVotes || 0) + 1;
+        } else if (candId) {
+          positionTallies[posId].validVotes = (positionTallies[posId].validVotes || 0) + 1;
+          positionTallies[posId].candidateCounts = positionTallies[posId].candidateCounts || {};
+          positionTallies[posId].candidateCounts[candId] =
+            (positionTallies[posId].candidateCounts[candId] || 0) + 1;
+          candidateVotes[candId] = (candidateVotes[candId] || 0) + 1;
+        }
+      }
+
+      const nowIso = new Date().toISOString();
+
+      // 3. Mark voter document as voted
+      transaction.set(
+        voterRef,
+        {
+          hasVoted: true,
+          votedAt: nowIso,
+        },
+        { merge: true }
+      );
+
+      // Also update token document for backward compatibility
+      transaction.set(
+        tokenRef,
+        {
+          hasVoted: true,
+          votedAt: nowIso,
+          status: 'used',
+        },
+        { merge: true }
+      );
+
+      // 4. Create new anonymous vote document in votes collection (NO personal voter identifiers)
+      transaction.set(voteRef, {
+        id: ballotId,
+        choices,
+        submittedAt: nowIso,
+        isPractice: false,
+        clientTimestamp: Date.now(),
+      });
+
+      // 5. Update election_stats/current document
+      transaction.set(
+        statsRef,
+        {
+          totalVotesCast: newTotalVotes,
+          totalEligibleVoters: totalEligible,
+          turnoutPercentage: newTurnout,
+          lastVoteAt: nowIso,
+          candidateVotes,
+          positionTallies,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      return { ballotId };
+    });
+
+    return { success: true, ballotId: result.ballotId };
+  } catch (error: any) {
+    console.error('[Voting Transaction] Failed:', error);
+    return { success: false, error: error.message || 'Transaction failed. Please try again.' };
+  }
+}
+
+/**
+ * Real-time listener on the single aggregated 'election_stats/current' document.
+ * Crucial Firestore Quota Optimization:
+ * Reduces real-time reads from 400 documents per client down to exactly 1 document read per update!
+ */
+export function subscribeToElectionStats(
+  onStatsUpdate: (stats: ElectionStatsRecord) => void,
+  onError?: (err: Error) => void
+): Unsubscribe {
+  try {
+    const statsDocRef = doc(db, 'election_stats', 'current');
+    return onSnapshot(
+      statsDocRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          onStatsUpdate(docSnap.data() as ElectionStatsRecord);
+        }
+      },
+      (err) => {
+        onError?.(err);
+      }
+    );
+  } catch (err: any) {
+    onError?.(err);
+    return () => {};
+  }
+}
+
+/**
+ * Aggregation query to fetch the total registered voter count efficiently.
+ * Uses getCountFromServer (costs only 1 read per 1,000 documents).
+ * Falls back to election_stats/current totalEligibleVoters if list is restricted.
+ */
+export async function getRegisteredVoterCount(): Promise<number> {
+  try {
+    const coll = collection(db, 'voters');
+    const snapshot = await withTimeout(getCountFromServer(coll), 2500, null);
+    if (snapshot && typeof snapshot.data().count === 'number') {
+      return snapshot.data().count;
+    }
+  } catch {
+    // If security rules disallow list queries on voters collection, read from aggregated stats
+  }
+
+  try {
+    const statsSnap = await withTimeout(getDoc(doc(db, 'election_stats', 'current')), 2000, null);
+    if (statsSnap && statsSnap.exists()) {
+      return statsSnap.data().totalEligibleVoters || 389;
+    }
+  } catch {
+    // ignore
+  }
+
+  return 389;
+}
+
+/**
+ * Configures the election start and end timestamps in Firestore using Timestamp.fromDate.
+ */
+export async function configureElectionTimes(
+  startDateStr: string,
+  endDateStr: string,
+  closingTimeStr: string = '20:00'
+): Promise<boolean> {
+  try {
+    const cleanTime = closingTimeStr.trim().length === 5 ? `${closingTimeStr.trim()}:00` : closingTimeStr.trim();
+    const startDateTime = new Date(`${startDateStr}T08:00:00Z`);
+    const endDateTime = new Date(`${endDateStr}T${cleanTime}Z`);
+
+    const startTimestamp = Timestamp.fromDate(isNaN(startDateTime.getTime()) ? new Date() : startDateTime);
+    const endTimestamp = Timestamp.fromDate(
+      isNaN(endDateTime.getTime()) ? new Date(Date.now() + 12 * 3600 * 1000) : endDateTime
+    );
+
+    const metaRef = doc(db, 'election_metadata', 'current');
+    await updateDoc(metaRef, {
+      startTime: startTimestamp,
+      endTime: endTimestamp,
+      serverTime: serverTimestamp(),
+      lastUpdated: new Date().toISOString(),
+    });
+    return true;
+  } catch (err) {
+    console.error('Failed to configure election timestamps:', err);
+    return false;
+  }
+}
+
 
 /**
  * Persists an anonymous cast ballot to Firestore.
@@ -292,7 +563,7 @@ export async function fetchVoterTokensOnce(): Promise<VoterTokenRecord[]> {
     });
     return tokens;
   } catch (error) {
-    console.error('[Firebase] Failed to fetch voter tokens on-demand:', error);
+    console.warn('[Firebase] Notice on fetching voter tokens on-demand:', error);
     return [];
   }
 }
@@ -317,7 +588,7 @@ export async function fetchAnonymousVotesOnce(): Promise<Ballot[]> {
     });
     return ballots;
   } catch (error) {
-    console.error('[Firebase] Failed to fetch votes on-demand:', error);
+    console.warn('[Firebase] Notice on fetching votes on-demand:', error);
     return [];
   }
 }

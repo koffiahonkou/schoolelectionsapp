@@ -8,6 +8,8 @@ export interface ElectionClockProps {
   variant?: 'card' | 'compact' | 'banner' | 'booth';
   forVoters?: boolean; // When true, respects showClockToVoters and hides if results published
   className?: string;
+  serverEndTime?: any; // Firestore Timestamp or ISO string
+  serverTimeOffset?: number; // Milliseconds offset between client and Firestore server time
 }
 
 interface TimeRemaining {
@@ -21,30 +23,52 @@ interface TimeRemaining {
   formattedTarget: string;
 }
 
-function computeTimeRemaining(endDateStr: string, closingTimeStr: string): TimeRemaining {
-  // Normalize closing time to HH:MM:SS
-  const cleanTime = (closingTimeStr || '20:00').trim();
-  const timeWithSeconds = cleanTime.length === 5 ? `${cleanTime}:00` : cleanTime;
-
+function computeTimeRemaining(
+  endDateStr: string,
+  closingTimeStr: string,
+  serverEndTime?: any,
+  serverTimeOffset: number = 0
+): TimeRemaining {
   let targetDate: Date;
 
-  let normalizedDateStr = (endDateStr || '').trim();
-  if (normalizedDateStr.includes('T')) {
-    normalizedDateStr = normalizedDateStr.split('T')[0];
-  }
-
-  if (/^\d{4}-\d{2}-\d{2}$/.test(normalizedDateStr)) {
-    targetDate = new Date(`${normalizedDateStr}T${timeWithSeconds}`);
-  } else {
-    const parsedBase = new Date(normalizedDateStr);
-    if (!isNaN(parsedBase.getTime())) {
-      const yyyy = parsedBase.getFullYear();
-      const mm = String(parsedBase.getMonth() + 1).padStart(2, '0');
-      const dd = String(parsedBase.getDate()).padStart(2, '0');
-      targetDate = new Date(`${yyyy}-${mm}-${dd}T${timeWithSeconds}`);
+  if (serverEndTime) {
+    if (typeof serverEndTime.toDate === 'function') {
+      targetDate = serverEndTime.toDate();
+    } else if (typeof serverEndTime.toMillis === 'function') {
+      targetDate = new Date(serverEndTime.toMillis());
+    } else if (serverEndTime.seconds) {
+      targetDate = new Date(serverEndTime.seconds * 1000);
     } else {
-      const today = new Date().toISOString().split('T')[0];
-      targetDate = new Date(`${today}T${timeWithSeconds}`);
+      const parsed = new Date(serverEndTime);
+      targetDate = isNaN(parsed.getTime()) ? new Date(Date.now() + 6 * 3600 * 1000) : parsed;
+    }
+  } else {
+    // Normalize closing time to HH:MM:SS
+    const cleanTime = (closingTimeStr || '20:00').trim();
+    const timeWithSeconds = cleanTime.length === 5 ? `${cleanTime}:00` : cleanTime;
+
+    let normalizedDateStr = (endDateStr || '').trim();
+    if (normalizedDateStr.includes('T')) {
+      normalizedDateStr = normalizedDateStr.split('T')[0];
+    }
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(normalizedDateStr)) {
+      // Treat as UTC ISO format to prevent local timezone parsing discrepancy
+      targetDate = new Date(`${normalizedDateStr}T${timeWithSeconds}Z`);
+      if (isNaN(targetDate.getTime())) {
+        targetDate = new Date(`${normalizedDateStr}T${timeWithSeconds}`);
+      }
+    } else {
+      const parsedBase = new Date(normalizedDateStr);
+      if (!isNaN(parsedBase.getTime())) {
+        const yyyy = parsedBase.getFullYear();
+        const mm = String(parsedBase.getMonth() + 1).padStart(2, '0');
+        const dd = String(parsedBase.getDate()).padStart(2, '0');
+        targetDate = new Date(`${yyyy}-${mm}-${dd}T${timeWithSeconds}Z`);
+      } else {
+        const today = new Date().toISOString().split('T')[0];
+        targetDate = new Date(`${today}T${timeWithSeconds}Z`);
+      }
     }
   }
 
@@ -52,8 +76,9 @@ function computeTimeRemaining(endDateStr: string, closingTimeStr: string): TimeR
     targetDate = new Date(Date.now() + 6 * 3600 * 1000); // 6 hours from now
   }
 
-  const now = new Date();
-  const totalMs = targetDate.getTime() - now.getTime();
+  // Calculate remaining time using synchronized server time to eliminate device clock desync
+  const effectiveNow = Date.now() + (serverTimeOffset || 0);
+  const totalMs = targetDate.getTime() - effectiveNow;
   const isExpired = totalMs <= 0;
 
   const validDiff = Math.max(0, totalMs);
@@ -89,6 +114,8 @@ export const ElectionClock: React.FC<ElectionClockProps> = ({
   variant = 'card',
   forVoters = false,
   className = '',
+  serverEndTime,
+  serverTimeOffset = 0,
 }) => {
   // 1. Check voter display constraints:
   // If for voters and showClockToVoters is false, or if results already published, do not render to voters
@@ -97,22 +124,22 @@ export const ElectionClock: React.FC<ElectionClockProps> = ({
   }
 
   const endDate = config.endDate || config.date;
-  const closingTime = config.closingTime || '18:00';
+  const closingTime = config.closingTime || '20:00';
 
   const [timeRemaining, setTimeRemaining] = useState<TimeRemaining>(() =>
-    computeTimeRemaining(endDate, closingTime)
+    computeTimeRemaining(endDate, closingTime, serverEndTime, serverTimeOffset)
   );
 
   useEffect(() => {
-    // Update every second
+    // Update every second using server-synchronized time
     const update = () => {
-      setTimeRemaining(computeTimeRemaining(endDate, closingTime));
+      setTimeRemaining(computeTimeRemaining(endDate, closingTime, serverEndTime, serverTimeOffset));
     };
 
     update();
     const timer = setInterval(update, 1000);
     return () => clearInterval(timer);
-  }, [endDate, closingTime]);
+  }, [endDate, closingTime, serverEndTime, serverTimeOffset]);
 
   const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
 

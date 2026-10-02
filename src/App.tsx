@@ -49,6 +49,7 @@ import { AgentMonitoringView } from './components/Agents/AgentMonitoringView';
 import { ResultsDashboard } from './components/Results/ResultsDashboard';
 import { PrintableReport } from './components/Results/PrintableReport';
 import { VoterResultsLoginModal } from './components/VoterBooth/VoterResultsLoginModal';
+import { isFirebaseConfigured } from './lib/firebase';
 import {
   saveAnonymousVoteToFirestore,
   markVoterTokenUsedInFirestore,
@@ -59,12 +60,14 @@ import {
   saveElectionStateToFirestore,
   getElectionMetadataFromFirestore,
   subscribeToElectionMetadata,
-  subscribeToAnonymousVotes,
-  subscribeToVoterTokens,
-  fetchAnonymousVotesOnce,
-  fetchVoterTokensOnce,
+  subscribeToElectionStats,
+  submitVoteTransaction,
+  getRegisteredVoterCount,
+  ElectionStatsRecord,
   checkVoterTokenInFirestore,
   resetVoterTokenInFirestore,
+  fetchAnonymousVotesOnce,
+  fetchVoterTokensOnce,
 } from './lib/firebaseVoting';
 import { fetchWithBackoff, postJsonWithBackoff } from './utils/apiRetry';
 
@@ -77,6 +80,8 @@ export default function App() {
     return saved || 'Setup';
   });
   const [isStatusChecked, setIsStatusChecked] = useState(false);
+  const [firebaseError, setFirebaseError] = useState<string | null>(null);
+  const [serverTimeOffset, setServerTimeOffset] = useState<number>(0);
   const [currentView, setCurrentView] = useState<'booth' | 'admin' | 'results' | 'agents'>('booth');
   const [isPractice, setIsPractice] = useState(false);
 
@@ -180,8 +185,12 @@ export default function App() {
       const safetyTimeout = setTimeout(() => {
         if (isMounted) {
           if (!resolvedData) {
-            console.warn('Initial storage load timed out, rendering with fallback election data');
-            setData((prev) => prev || getDefaultElectionData());
+            console.warn('Initial storage load timed out, verifying Firebase connection...');
+            if (!isFirebaseConfigured) {
+              setFirebaseError(
+                'Firebase environment variables missing. Please configure VITE_FIREBASE_API_KEY, VITE_FIREBASE_PROJECT_ID, and VITE_FIREBASE_FIRESTORE_DATABASE_ID in Vercel Project Settings.'
+              );
+            }
           }
           setIsStatusChecked(true);
         }
@@ -343,12 +352,17 @@ export default function App() {
         }
       }
 
-      // 4. Default clean state if everything was empty
+      // 4. If all data sources failed, set explicit error rather than silently loading 35 fake students!
       if (!resolvedData && isMounted) {
-        const fallback = getDefaultElectionData();
-        setData(fallback);
-        saveElectionData(fallback).catch(() => {});
-        resolvedData = true;
+        if (!isFirebaseConfigured) {
+          setFirebaseError(
+            'Firebase connection credentials missing. Please set VITE_FIREBASE_API_KEY, VITE_FIREBASE_PROJECT_ID, and VITE_FIREBASE_FIRESTORE_DATABASE_ID in your Vercel Environment Variables.'
+          );
+        } else {
+          setFirebaseError(
+            'Unable to connect to the Firebase election database. Please verify your internet connection and Vercel environment variables.'
+          );
+        }
       }
 
       clearTimeout(safetyTimeout);
@@ -401,64 +415,23 @@ export default function App() {
       }
     });
 
-    // Real-time Firestore votes listener:
-    // When a voter deposits a ballot on any station, all devices immediately reflect the new vote!
-    const unsubscribeVotes = subscribeToAnonymousVotes((cloudBallots) => {
+    // OPTIMIZED REAL-TIME ELECTION STATS LISTENER (QUOTA FIX):
+    // Listens ONLY to the single 'election_stats/current' document!
+    // Instead of re-reading 400 documents on every vote, all connected devices
+    // receive exactly 1 document update containing total votes, turnout, and candidate counts.
+    const unsubscribeStats = subscribeToElectionStats((stats) => {
       if (!isMounted) return;
       setData((prev) => {
         if (!prev) return prev;
-        const ballotMap = new Map<string, Ballot>();
-        const prevBallots = prev.ballots || [];
-        (prevBallots).forEach((b) => ballotMap.set(b.id, b));
-        cloudBallots.forEach((b) => ballotMap.set(b.id, b));
-        const mergedBallots = Array.from(ballotMap.values());
-
-        const isSame =
-          mergedBallots.length === prevBallots.length &&
-          prevBallots.every((b) => ballotMap.has(b.id));
-
-        if (isSame) return prev;
-
-        const updated: ElectionData = {
+        return {
           ...prev,
-          ballots: mergedBallots,
+          config: {
+            ...prev.config,
+            liveTurnoutPct: stats.turnoutPercentage,
+            totalVotesCast: stats.totalVotesCast,
+          },
+          electionStats: stats,
         };
-        saveElectionData(updated).catch(() => {});
-        return updated;
-      });
-    });
-
-    // Real-time Firestore voter tokens listener:
-    // When a voter's token is marked used, all devices instantly see "Voted" on the roster!
-    const unsubscribeTokens = subscribeToVoterTokens((tokens) => {
-      if (!isMounted) return;
-      setData((prev) => {
-        if (!prev) return prev;
-        const tokenMap = new Map(tokens.map((t) => [t.voterId?.trim().toUpperCase(), t]));
-        let hasChanges = false;
-        const updatedVoters = (prev.voters || []).map((v) => {
-          const cleanId = v.voterId?.trim().toUpperCase();
-          const token = tokenMap.get(cleanId);
-          if (token && (token.hasVoted || token.status === 'used')) {
-            markVoterLocallyVoted(v.voterId);
-            if (!v.hasVoted) {
-              hasChanges = true;
-              return {
-                ...v,
-                hasVoted: true,
-                votedAt: token.votedAt || v.votedAt || new Date().toISOString(),
-              };
-            }
-          }
-          return v;
-        });
-        if (!hasChanges) return prev;
-        const updated: ElectionData = {
-          ...prev,
-          voters: updatedVoters,
-        };
-        saveElectionData(updated).catch(() => {});
-        return updated;
       });
     });
 
@@ -587,8 +560,7 @@ export default function App() {
       isMounted = false;
       if (pollTimer) clearTimeout(pollTimer);
       unsubscribeMeta();
-      unsubscribeVotes();
-      unsubscribeTokens();
+      unsubscribeStats();
     };
   }, []);
 
@@ -963,16 +935,6 @@ export default function App() {
           choices: { ...pendingChoices },
         };
 
-        // Synchronize anonymous vote to Firestore and update voter token
-        await saveAnonymousVoteToFirestore(newBallot).catch((err) =>
-          console.warn('[Firebase] Firestore vote sync warning:', err)
-        );
-        if (!isPractice && voterId) {
-          await markVoterTokenUsedInFirestore(voterId, newBallot.submittedAt).catch((err) =>
-            console.warn('[Firebase] Firestore token sync warning:', err)
-          );
-        }
-
         persistElectionData((prev) => {
           const updatedVoters = isPractice
             ? prev.voters
@@ -1014,29 +976,34 @@ export default function App() {
         });
       }
     } catch (networkErr) {
-      console.warn('Online server unreachable, processing with local fallback:', networkErr);
+      console.warn('Online server endpoint unreachable, submitting directly via Firestore runTransaction:', networkErr);
 
       if (!isPractice && voterId) {
         markVoterLocallyVoted(voterId);
       }
 
-      // Local Fallback (if server unreachable or strictly offline)
+      // Direct Firestore Transaction Fallback
+      let txBallotId = 'bal-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7);
+      if (!isPractice && voterId) {
+        const txRes = await submitVoteTransaction(
+          voterId,
+          pin || '',
+          pendingChoices,
+          false
+        );
+        if (!txRes.success) {
+          console.warn('Direct Firestore voting transaction error:', txRes.error);
+        } else if (txRes.ballotId) {
+          txBallotId = txRes.ballotId;
+        }
+      }
+
       const newBallot: Ballot = {
-        id: 'bal-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+        id: txBallotId,
         submittedAt: new Date().toISOString(),
         isPractice,
         choices: { ...pendingChoices },
       };
-
-      // Synchronize anonymous vote to Firestore and update voter token
-      await saveAnonymousVoteToFirestore(newBallot).catch((err) =>
-        console.warn('[Firebase] Firestore vote fallback sync warning:', err)
-      );
-      if (!isPractice && voterId) {
-        await markVoterTokenUsedInFirestore(voterId, newBallot.submittedAt).catch((err) =>
-          console.warn('[Firebase] Firestore token sync warning:', err)
-        );
-      }
 
       persistElectionData((prev) => {
         const updatedVoters = isPractice
@@ -1460,6 +1427,41 @@ export default function App() {
   };
 
   if (!data || !isStatusChecked) {
+    if (firebaseError && !data) {
+      return (
+        <div
+          id="election-station-error"
+          className="min-h-screen flex items-center justify-center bg-slate-950 text-white p-6"
+        >
+          <div className="max-w-lg w-full bg-slate-900 border border-rose-500/40 rounded-3xl p-8 shadow-2xl space-y-6 text-center">
+            <div className="w-16 h-16 bg-rose-500/10 border border-rose-500/30 rounded-2xl flex items-center justify-center mx-auto text-rose-400">
+              <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-xl font-black text-rose-300">Firebase Connection Required</h2>
+              <p className="text-sm text-slate-400 mt-2 leading-relaxed">
+                {firebaseError}
+              </p>
+            </div>
+            <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 text-left text-xs font-mono text-slate-300 space-y-2">
+              <div className="text-amber-400 font-bold">Vercel Environment Variables Needed:</div>
+              <div>• VITE_FIREBASE_API_KEY</div>
+              <div>• VITE_FIREBASE_PROJECT_ID</div>
+              <div>• VITE_FIREBASE_FIRESTORE_DATABASE_ID</div>
+            </div>
+            <button
+              onClick={() => window.location.reload()}
+              className="w-full py-3 px-6 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition-all shadow-lg shadow-indigo-600/30 cursor-pointer"
+            >
+              Retry Connection
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div
         id="election-station-loading"

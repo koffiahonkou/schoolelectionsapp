@@ -80,16 +80,39 @@ export function validateVoterLogin(
 export function calculateElectionTallies(
   positions: Position[],
   candidates: Candidate[],
-  ballots: Ballot[],
-  voters: Voter[],
-  includePractice: boolean = false
+  ballots: Ballot[] = [],
+  voters: Voter[] = [],
+  includePractice: boolean = false,
+  stats?: {
+    totalEligibleVoters?: number;
+    totalVotesCast?: number;
+    turnoutPercentage?: number;
+    candidateVotes?: Record<string, number>;
+    positionTallies?: Record<
+      string,
+      {
+        totalVotes?: number;
+        validVotes?: number;
+        abstainVotes?: number;
+        candidateCounts?: Record<string, number>;
+      }
+    >;
+  }
 ): ElectionTallyReport {
   // Filter active official ballots unless counting practice
-  const relevantBallots = ballots.filter((b) => (includePractice ? true : !b.isPractice));
-  const totalRegisteredVoters = voters.length;
-  const totalBallotsCast = relevantBallots.length;
+  const relevantBallots = (ballots || []).filter((b) => (includePractice ? true : !b.isPractice));
+  const totalRegisteredVoters =
+    stats?.totalEligibleVoters !== undefined && stats.totalEligibleVoters > 0
+      ? stats.totalEligibleVoters
+      : voters.length;
+  const totalBallotsCast =
+    stats?.totalVotesCast !== undefined && stats.totalVotesCast > 0
+      ? stats.totalVotesCast
+      : relevantBallots.length;
   const turnoutPercentage =
-    totalRegisteredVoters > 0
+    stats?.turnoutPercentage !== undefined && stats.turnoutPercentage > 0
+      ? stats.turnoutPercentage
+      : totalRegisteredVoters > 0
       ? Number(((totalBallotsCast / totalRegisteredVoters) * 100).toFixed(1))
       : 0;
 
@@ -104,12 +127,27 @@ export function calculateElectionTallies(
       voteCounts[cand.id] = 0;
     }
 
-    for (const ballot of relevantBallots) {
-      const choice = ballot.choices[position.id];
-      if (choice === ABSTAIN_SELECTION || !choice) {
-        abstainCount++;
-      } else if (voteCounts[choice] !== undefined) {
-        voteCounts[choice]++;
+    // Check if aggregated stats has data for this position
+    const statPos = stats?.positionTallies?.[position.id];
+
+    if (relevantBallots.length > 0) {
+      for (const ballot of relevantBallots) {
+        const choice = ballot.choices[position.id];
+        if (choice === ABSTAIN_SELECTION || !choice) {
+          abstainCount++;
+        } else if (voteCounts[choice] !== undefined) {
+          voteCounts[choice]++;
+        }
+      }
+    } else if (statPos) {
+      abstainCount = statPos.abstainVotes || 0;
+      for (const cand of posCandidates) {
+        voteCounts[cand.id] =
+          statPos.candidateCounts?.[cand.id] || stats?.candidateVotes?.[cand.id] || 0;
+      }
+    } else if (stats?.candidateVotes) {
+      for (const cand of posCandidates) {
+        voteCounts[cand.id] = stats.candidateVotes[cand.id] || 0;
       }
     }
 
