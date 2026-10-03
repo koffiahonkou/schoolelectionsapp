@@ -33,7 +33,9 @@ import {
   subscribeToElectionStats,
   ElectionStatsRecord,
   VoterTokenRecord,
+  saveElectionStateToFirestore,
 } from '../../../lib/firebaseVoting';
+import { postJsonWithBackoff } from '../../../utils/apiRetry';
 
 interface VoterRosterTabProps {
   voters: Voter[];
@@ -103,19 +105,46 @@ export const VoterRosterTab: React.FC<VoterRosterTabProps> = ({
   const [isSyncingFirestore, setIsSyncingFirestore] = useState(false);
 
   const handleSyncFirestoreTokens = async () => {
+    if (!voters || voters.length === 0) {
+      alert('The voter roster is currently empty. Please import or add voters first.');
+      return;
+    }
+
     setIsSyncingFirestore(true);
     try {
-      const res = await syncVoterRosterToFirestoreTokens(voters);
-      if (res.success) {
-        setImportNotice(`Successfully synchronized ${res.count} voter tokens to Firestore database.`);
+      // 1. Direct Firestore canonical metadata update (saves all 389 voters to election_metadata/current)
+      const metaSaved = await saveElectionStateToFirestore(
+        { voters },
+        undefined,
+        currentUser?.fullName || 'Electoral Commission'
+      );
+
+      // 2. Sync token credentials to voter_tokens collection for polling booth lookups
+      const tokenRes = await syncVoterRosterToFirestoreTokens(voters);
+
+      // 3. Sync to API route /api/election/update so serverless endpoints stay in sync
+      const apiRes = await postJsonWithBackoff('/api/election/update', {
+        data: { voters },
+        actor: currentUser?.fullName || 'Commission Admin',
+        actorRole: currentUser?.role || 'Staff',
+        actionDescription: `Synchronized ${voters.length} voters from client station to Firestore`,
+      });
+
+      if (metaSaved || tokenRes.success || apiRes.success) {
+        const msg = `Synchronization Successful! ${voters.length} voters and their security tokens are now live in Firestore and synchronized across all devices.`;
+        setImportNotice(msg);
+        alert(msg);
       } else {
-        setImportNotice('Voter token synchronization completed with warnings.');
+        throw new Error('All synchronization attempts returned warnings.');
       }
     } catch (err: any) {
-      setImportNotice(`Sync notice: ${err?.message || 'Check Firestore configuration.'}`);
+      const errMsg = `Synchronization Failed: ${err?.message || 'Check your internet connection and Firestore configuration.'}`;
+      console.error('[Sync to Firestore] Error:', err);
+      setImportNotice(errMsg);
+      alert(errMsg);
     } finally {
       setIsSyncingFirestore(false);
-      setTimeout(() => setImportNotice(null), 5000);
+      setTimeout(() => setImportNotice(null), 6000);
     }
   };
 

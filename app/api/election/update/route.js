@@ -10,12 +10,12 @@ const CORS_HEADERS = {
   'Cache-Control': 'no-cache, no-store, must-revalidate',
 };
 
-let firestoreDb: any = null;
+let firestoreDb = null;
 
 function getDb() {
   if (firestoreDb) return firestoreDb;
   try {
-    let config: any = null;
+    let config = null;
     try {
       config = require('../../../../firebase-applet-config.json');
     } catch {
@@ -53,7 +53,7 @@ function getDb() {
   return firestoreDb;
 }
 
-async function handleUpdate(request: Request) {
+async function handleUpdate(request) {
   try {
     const body = await request.json().catch(() => ({}));
     const { data, status, actor, actorRole, actionDescription } = body || {};
@@ -66,7 +66,7 @@ async function handleUpdate(request: Request) {
       const db = getDb();
       if (db && (status || data)) {
         const { doc, setDoc } = require('firebase/firestore');
-        const updatePayload: Record<string, any> = {
+        const updatePayload = {
           lastUpdated: new Date().toISOString(),
           updatedBy: actor ? `${actor} (${actorRole || 'Staff'})` : 'Admin',
         };
@@ -108,7 +108,7 @@ async function handleUpdate(request: Request) {
       },
       { status: 200, headers: CORS_HEADERS }
     );
-  } catch (error: any) {
+  } catch (error) {
     console.error('[app/api/election/update] Error:', error);
     return Response.json(
       { success: false, error: error?.message || 'Failed to process election update' },
@@ -120,19 +120,20 @@ async function handleUpdate(request: Request) {
 /**
  * POST /api/election/update
  */
-export async function POST(request: Request) {
+export async function POST(request) {
   return handleUpdate(request);
 }
 
 /**
  * PUT /api/election/update
  */
-export async function PUT(request: Request) {
+export async function PUT(request) {
   return handleUpdate(request);
 }
 
 /**
  * GET /api/election/update
+ * Status probe preventing 405 Method Not Allowed
  */
 export async function GET() {
   return Response.json(

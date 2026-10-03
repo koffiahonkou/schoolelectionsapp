@@ -126,7 +126,7 @@ export default async function handler(req: any, res: any) {
       timestamp: new Date().toISOString(),
     });
   } catch (err: any) {
-    return res.status(503).json({
+    return res.status(500).json({
       success: false,
       error: `Failed to connect to Firebase Firestore: ${err.message || err}`,
     });

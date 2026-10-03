@@ -82,7 +82,7 @@ export default async function handler(req: any, res: any) {
 
     const db = getDb();
     if (!db) {
-      return res.status(503).json({
+      return res.status(500).json({
         success: false,
         error: 'Database connection unavailable. Please check Vercel Firebase environment variables.',
       });

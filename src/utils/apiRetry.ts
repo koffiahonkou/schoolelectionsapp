@@ -21,19 +21,12 @@ export interface BackoffOptions {
 
 /**
  * Determines if an HTTP status code is safe to retry.
- * CRITICAL: 404 (Not Found), 405 (Method Not Allowed), 400 (Bad Request),
- * 401 (Unauthorized), 403 (Forbidden) must NEVER be retried automatically in a loop.
+ * CRITICAL: 503, 500, 405, 404, 400, 401, 403 must NEVER be retried.
+ * Retrying 500/503/405 creates a frontend retry storm that hammers the server and Firebase quotas.
+ * Only HTTP 429 (Too Many Requests / Rate Limited) is safely retryable with exponential backoff.
  */
 export function defaultIsRetryableStatus(status: number): boolean {
-  // Non-retryable client errors (retrying will only cause server spam & quota burn)
-  if (status === 400 || status === 401 || status === 403 || status === 404 || status === 405 || status === 422) {
-    return false;
-  }
-  // Rate limited (429) or Server Errors (500, 502, 503, 504) are retryable
-  if (status === 429 || (status >= 500 && status <= 599)) {
-    return true;
-  }
-  return false;
+  return status === 429;
 }
 
 /**
@@ -76,19 +69,16 @@ export function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Safe fetch with exponential backoff.
- * Guaranteed never to retry tight-loop fatal status codes like 404 or 405.
- *
- * @example
- * const res = await fetchWithBackoff('/api/election', { method: 'GET' });
- * const json = await res.json();
+ * Safe fetch with exponential backoff and retry storm protection.
+ * Immediately stops retrying and throws if it receives a 503, 500, 405, or other fatal status.
+ * Only retries on genuine network failures (TypeError) or 429 Too Many Requests.
  */
 export async function fetchWithBackoff(
   input: RequestInfo | URL,
   init?: RequestInit,
   options: BackoffOptions = {}
 ): Promise<Response> {
-  const maxRetries = options.maxRetries ?? 3;
+  const maxRetries = options.maxRetries ?? 2;
   const isRetryable = options.isRetryableStatus ?? defaultIsRetryableStatus;
 
   let attempt = 0;
@@ -97,29 +87,56 @@ export async function fetchWithBackoff(
     try {
       const response = await fetch(input, init);
 
-      // If response is OK or status is not retryable (e.g. 200, 404, 405), return immediately
-      if (response.ok || !isRetryable(response.status) || attempt >= maxRetries) {
+      // Successful response: return immediately
+      if (response.ok) {
         return response;
       }
 
-      // Calculate delay with backoff
+      // Check for non-retryable fatal status (503, 500, 405, 404, etc.)
+      if (!isRetryable(response.status)) {
+        const errorMsg = `Server request failed with HTTP ${response.status} (${response.statusText || 'Error'})`;
+        console.warn(
+          `[fetchWithBackoff] Non-retryable status ${response.status} for ${typeof input === 'string' ? input : 'URL'}. Halting retries immediately.`
+        );
+        const error: any = new Error(errorMsg);
+        error.status = response.status;
+        error.response = response;
+        throw error;
+      }
+
+      // Only retryable status (429 Rate Limited) proceeds to backoff
+      if (attempt >= maxRetries) {
+        const rateLimitErr: any = new Error(`Request rate-limited after ${maxRetries} attempts (HTTP 429)`);
+        rateLimitErr.status = 429;
+        rateLimitErr.response = response;
+        throw rateLimitErr;
+      }
+
       const delayMs = calculateBackoffDelay(attempt, options, response);
       console.warn(
-        `[fetchWithBackoff] Request to ${typeof input === 'string' ? input : 'URL'} returned ${response.status}. Retrying in ${delayMs}ms (Attempt ${attempt + 1}/${maxRetries})...`
+        `[fetchWithBackoff] HTTP 429 Rate Limit encountered. Retrying in ${delayMs}ms (Attempt ${attempt + 1}/${maxRetries})...`
       );
-
       await sleep(delayMs);
       attempt++;
     } catch (networkError: any) {
-      // Network failure (offline, DNS, timeout)
-      if (attempt >= maxRetries) {
-        console.error(`[fetchWithBackoff] Network request failed after ${maxRetries} attempts:`, networkError);
+      // If error was thrown intentionally for fatal HTTP statuses (500, 503, 405), rethrow immediately!
+      if (networkError?.status) {
+        throw networkError;
+      }
+
+      // Only retry true network failures (e.g. TypeError from fetch failed / offline / DNS error)
+      const isNetworkTypeError = networkError instanceof TypeError || networkError?.name === 'TypeError';
+      if (!isNetworkTypeError || attempt >= maxRetries) {
+        console.error(
+          `[fetchWithBackoff] Network request failed permanently after ${attempt} attempts:`,
+          networkError?.message || networkError
+        );
         throw networkError;
       }
 
       const delayMs = calculateBackoffDelay(attempt, options);
       console.warn(
-        `[fetchWithBackoff] Network error occurred. Retrying in ${delayMs}ms (Attempt ${attempt + 1}/${maxRetries})...`,
+        `[fetchWithBackoff] Network connectivity error. Retrying in ${delayMs}ms (Attempt ${attempt + 1}/${maxRetries})...`,
         networkError?.message
       );
 

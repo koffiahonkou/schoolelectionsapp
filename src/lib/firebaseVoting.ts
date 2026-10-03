@@ -871,7 +871,13 @@ export async function saveElectionStateToFirestore(
     if (data.accounts !== undefined) payload.accounts = data.accounts;
 
     const saveTask = setDoc(metaRef, sanitizeForFirestore(payload), { merge: true });
-    await withTimeout(saveTask, 2500, null);
+    await withTimeout(saveTask, 15000, null);
+
+    // Also update election_stats document with totalEligibleVoters so turnout % reflects accurately
+    if (data.voters !== undefined) {
+      const statsRef = doc(db, 'election_stats', 'current');
+      await setDoc(statsRef, { totalEligibleVoters: data.voters.length }, { merge: true }).catch(() => {});
+    }
 
     return true;
   } catch (err) {

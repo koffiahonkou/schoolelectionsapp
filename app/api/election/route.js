@@ -10,12 +10,12 @@ const CORS_HEADERS = {
   'Cache-Control': 'no-cache, no-store, must-revalidate',
 };
 
-let firestoreDb: any = null;
+let firestoreDb = null;
 
 function getDb() {
   if (firestoreDb) return firestoreDb;
   try {
-    let config: any = null;
+    let config = null;
     try {
       config = require('../../../firebase-applet-config.json');
     } catch {
@@ -25,7 +25,7 @@ function getDb() {
           config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
         }
       } catch {
-        // config not found
+        // config file not found
       }
     }
 
@@ -55,7 +55,7 @@ function getDb() {
 
 /**
  * GET /api/election
- * Returns current election state. Never crashes with 503.
+ * Returns the current canonical election state. Never crashes with 503.
  */
 export async function GET() {
   try {
@@ -65,14 +65,14 @@ export async function GET() {
       const metaSnap = await getDoc(doc(db, 'election_metadata', 'current'));
       if (metaSnap.exists()) {
         const cloud = metaSnap.data();
-        let stats: any = {};
+        let stats = {};
         try {
           const statsSnap = await getDoc(doc(db, 'election_stats', 'current'));
           if (statsSnap.exists()) {
             stats = statsSnap.data();
           }
         } catch {
-          // non-fatal
+          // non-fatal stats lookup
         }
 
         const resolvedStatus = cloud.status || (cloud.config?.status === 'Active' ? 'Open' : cloud.config?.status) || 'Open';
@@ -100,18 +100,19 @@ export async function GET() {
       }
     }
 
+    // Fallback if metadata doc not initialized yet
     return Response.json(
       {
         success: true,
         data: null,
         status: 'Open',
-        message: 'No metadata in Firestore yet',
+        message: 'No metadata in Firestore yet. Connect client to initialize.',
         timestamp: new Date().toISOString(),
       },
       { status: 200, headers: CORS_HEADERS }
     );
-  } catch (error: any) {
-    console.error('[app/api/election] Error:', error);
+  } catch (error) {
+    console.error('[app/api/election] GET error:', error);
     return Response.json(
       { success: false, error: error?.message || 'Internal server error' },
       { status: 500, headers: CORS_HEADERS }
@@ -121,8 +122,9 @@ export async function GET() {
 
 /**
  * POST /api/election
+ * Acknowledges or persists state update.
  */
-export async function POST(request: Request) {
+export async function POST(request) {
   try {
     const body = await request.json();
     return Response.json(
@@ -134,7 +136,7 @@ export async function POST(request: Request) {
       },
       { status: 200, headers: CORS_HEADERS }
     );
-  } catch (error: any) {
+  } catch (error) {
     return Response.json(
       { success: false, error: error?.message || 'Invalid payload' },
       { status: 400, headers: CORS_HEADERS }
@@ -144,6 +146,7 @@ export async function POST(request: Request) {
 
 /**
  * OPTIONS /api/election
+ * CORS preflight handling
  */
 export async function OPTIONS() {
   return new Response(null, {

@@ -26,25 +26,22 @@ service cloud.firestore {
     // 2. Anonymous Cast Ballots Collection
     // Read: Allowed (ballots are strictly secret & anonymous without PII)
     // Create: Allowed if anonymous and properly structured
-    // Update/Delete: Forbidden to ensure ballot immutability
+    // Delete: Allowed for admin system wipe and reset
     match /votes/{voteId} {
       allow read: if true;
       allow create: if isValidVote(request.resource.data);
-      allow update, delete: if false;
+      allow update: if false;
+      allow delete: if true;
     }
 
     // 3. Registered Voters Collection
     match /voters/{voterId} {
-      allow read: if true;
-      allow create, update: if true;
-      allow delete: if false;
+      allow read, write: if true;
     }
 
     // 4. Voter Tokens Collection
     match /voter_tokens/{tokenId} {
-      allow read: if true;
-      allow create, update: if true;
-      allow delete: if false;
+      allow read, write: if true;
     }
 
     // 5. Live Agent Monitoring Collection

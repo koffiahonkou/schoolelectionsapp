@@ -873,190 +873,144 @@ export default function App() {
     const voterId = activeVoter.voterId;
     const pin = activeVoter.pin;
 
-    // Submit to server online vote endpoint (handled with atomic queue mutex)
-    try {
-      const response = await fetch('/api/vote', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          voterId,
-          passcode: pin,
-          choices: pendingChoices,
-          isPractice,
-          captchaVerified: true,
-        }),
-      });
+    let submittedBallotId = 'bal-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7);
+    let ballotTimestamp = new Date().toISOString();
+    let submissionSuccess = false;
+    let failureReason = '';
 
-      const resData = await response.json();
-
-      if (!response.ok || !resData.success) {
-        setIsSubmittingVote(false);
-        if (response.status === 409) {
-          if (!isPractice && voterId) markVoterLocallyVoted(voterId);
-          handleCancelVoterSession();
-        }
-        return;
-      }
-
-      // Mark locally voted immediately to guarantee no second ballot can be cast
-      if (!isPractice && voterId) {
-        markVoterLocallyVoted(voterId);
-      }
-
-      // Live state successfully updated on online server
-      if (resData.data) {
-        const castBallot = resData.data.ballots[resData.data.ballots.length - 1];
-        if (castBallot) {
-          await saveAnonymousVoteToFirestore(castBallot).catch((err) =>
-            console.warn('[Firebase] Firestore vote sync warning:', err)
-          );
-        }
-        if (!isPractice && voterId) {
-          await markVoterTokenUsedInFirestore(voterId).catch((err) =>
-            console.warn('[Firebase] Firestore token sync warning:', err)
-          );
-        }
-
-        setData((prev) => {
-          if (!prev) return resData.data;
-          const ballotMap = new Map<string, Ballot>();
-          (prev.ballots || []).forEach((b) => ballotMap.set(b.id, b));
-          (resData.data.ballots || []).forEach((b: Ballot) => ballotMap.set(b.id, b));
-          const mergedBallots = Array.from(ballotMap.values());
-
-          const mergedVoters = (resData.data.voters || prev.voters || []).map((v: Voter) =>
-            v.voterId.toUpperCase() === voterId.toUpperCase()
-              ? { ...v, hasVoted: true, votedAt: castBallot?.submittedAt || new Date().toISOString() }
-              : v
-          );
-
-          const updated: ElectionData = {
-            ...resData.data,
-            ballots: mergedBallots,
-            voters: mergedVoters,
-          };
-          saveElectionData(updated).catch(() => {});
-          return updated;
-        });
-      } else {
-        // Online serverless confirmation (e.g. Vercel /api/vote)
-        const newBallot: Ballot = {
-          id: resData.ballotId || ('bal-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7)),
-          submittedAt: resData.timestamp || new Date().toISOString(),
-          isPractice,
-          choices: { ...pendingChoices },
-        };
-
-        persistElectionData((prev) => {
-          const updatedVoters = isPractice
-            ? prev.voters
-            : prev.voters.map((v) =>
-                v.voterId.toUpperCase() === activeVoter.voterId.toUpperCase()
-                  ? { ...v, hasVoted: true, votedAt: newBallot.submittedAt }
-                  : v
-              );
-
-          const ballotMap = new Map<string, Ballot>();
-          (prev.ballots || []).forEach((b) => ballotMap.set(b.id, b));
-          ballotMap.set(newBallot.id, newBallot);
-          const updatedBallots = Array.from(ballotMap.values());
-
-          const auditEntry = createChainedAuditEntry(prev.auditLogs, {
-            eventType: 'ballot_submitted',
-            details: isPractice
-              ? 'Demo practice ballot cast.'
-              : `Official anonymous ballot deposited online. Total ballots: ${
-                  updatedBallots.filter((b) => !b.isPractice).length
-                }/${prev.voters.length}.`,
-            category: 'ballot',
-            actor: 'Confidential Ballot Box',
-            actorRole: 'Voter',
-            metadata: {
-              isPractice,
-              ballotId: newBallot.id,
-              totalCast: updatedBallots.filter((b) => !b.isPractice).length,
-              totalEligible: prev.voters.length,
-            },
-          });
-
-          return {
-            ...prev,
-            voters: updatedVoters,
-            ballots: updatedBallots,
-            auditLogs: [...prev.auditLogs, auditEntry],
-          };
-        });
-      }
-    } catch (networkErr) {
-      console.warn('Online server endpoint unreachable, submitting directly via Firestore runTransaction:', networkErr);
-
-      if (!isPractice && voterId) {
-        markVoterLocallyVoted(voterId);
-      }
-
-      // Direct Firestore Transaction Fallback
-      let txBallotId = 'bal-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7);
-      if (!isPractice && voterId) {
+    // Step 1: Handle Practice Ballot
+    if (isPractice) {
+      submissionSuccess = true;
+      submittedBallotId = 'practice-' + submittedBallotId;
+    } else {
+      // Step 2: Attempt Direct Firestore Atomic Transaction (Instantaneous, resilient, ACID-guaranteed)
+      try {
         const txRes = await submitVoteTransaction(
           voterId,
           pin || '',
           pendingChoices,
           false
         );
-        if (!txRes.success) {
-          console.warn('Direct Firestore voting transaction error:', txRes.error);
-        } else if (txRes.ballotId) {
-          txBallotId = txRes.ballotId;
+
+        if (txRes.success) {
+          submissionSuccess = true;
+          if (txRes.ballotId) submittedBallotId = txRes.ballotId;
+          ballotTimestamp = new Date().toISOString();
+        } else {
+          failureReason = txRes.error || 'Transaction rejected';
+          console.warn('[Vote] Direct Firestore transaction returned error:', txRes.error);
+
+          // If voter has already voted according to database, block immediately
+          if (txRes.error && txRes.error.toLowerCase().includes('already')) {
+            markVoterLocallyVoted(voterId);
+            setIsSubmittingVote(false);
+            setIsReviewModalOpen(false);
+            alert(`Duplicate ballot blocked: ${txRes.error}`);
+            handleCancelVoterSession();
+            return;
+          }
         }
+      } catch (txException: any) {
+        console.warn('[Vote] Direct Firestore exception, trying /api/vote fallback:', txException);
+        failureReason = txException?.message || 'Database error';
       }
 
-      const newBallot: Ballot = {
-        id: txBallotId,
-        submittedAt: new Date().toISOString(),
-        isPractice,
-        choices: { ...pendingChoices },
-      };
+      // Step 3: If direct Firestore transaction was not successful, attempt /api/vote serverless fallback
+      if (!submissionSuccess) {
+        try {
+          const response = await fetch('/api/vote', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              voterId,
+              passcode: pin,
+              choices: pendingChoices,
+              isPractice: false,
+              captchaVerified: true,
+            }),
+          });
 
-      persistElectionData((prev) => {
-        const updatedVoters = isPractice
-          ? prev.voters
-          : prev.voters.map((v) =>
-              v.voterId.toUpperCase() === activeVoter.voterId.toUpperCase()
-                ? { ...v, hasVoted: true, votedAt: newBallot.submittedAt }
-                : v
-            );
-
-        const ballotMap = new Map<string, Ballot>();
-        (prev.ballots || []).forEach((b) => ballotMap.set(b.id, b));
-        ballotMap.set(newBallot.id, newBallot);
-        const updatedBallots = Array.from(ballotMap.values());
-
-        const auditEntry = createChainedAuditEntry(prev.auditLogs, {
-          eventType: 'ballot_submitted',
-          details: isPractice
-            ? 'Demo practice ballot cast.'
-            : `Official anonymous ballot deposited (offline fallback). Total ballots: ${
-                updatedBallots.filter((b) => !b.isPractice).length
-              }/${prev.voters.length}.`,
-          category: 'ballot',
-          actor: 'Confidential Ballot Box',
-          actorRole: 'Voter',
-          metadata: {
-            isPractice,
-            ballotId: newBallot.id,
-            totalCast: updatedBallots.filter((b) => !b.isPractice).length,
-            totalEligible: prev.voters.length,
-          },
-        });
-
-        return {
-          ...prev,
-          voters: updatedVoters,
-          ballots: updatedBallots,
-          auditLogs: [...prev.auditLogs, auditEntry],
-        };
-      });
+          const resData = await response.json().catch(() => ({}));
+          if (response.ok && resData.success) {
+            submissionSuccess = true;
+            if (resData.ballotId) submittedBallotId = resData.ballotId;
+            if (resData.timestamp) ballotTimestamp = resData.timestamp;
+          } else {
+            failureReason = resData.error || `Server responded with status ${response.status}`;
+            if (response.status === 409) {
+              markVoterLocallyVoted(voterId);
+              setIsSubmittingVote(false);
+              setIsReviewModalOpen(false);
+              alert(`Duplicate ballot blocked: ${failureReason}`);
+              handleCancelVoterSession();
+              return;
+            }
+          }
+        } catch (apiErr: any) {
+          console.warn('[Vote] /api/vote serverless fallback also failed:', apiErr);
+          failureReason = apiErr?.message || failureReason || 'Connection failed';
+        }
+      }
     }
+
+    // Step 4: If all submission paths failed, notify the voter and leave the ballot intact so they can retry
+    if (!submissionSuccess) {
+      setIsSubmittingVote(false);
+      alert(`Submission failed: ${failureReason || 'Please check your connection and try again.'}`);
+      return;
+    }
+
+    // Step 5: Mark voter voted locally to guarantee no duplicate attempts on this station
+    if (!isPractice && voterId) {
+      markVoterLocallyVoted(voterId);
+    }
+
+    const newBallot: Ballot = {
+      id: submittedBallotId,
+      submittedAt: ballotTimestamp,
+      isPractice,
+      choices: { ...pendingChoices },
+    };
+
+    persistElectionData((prev) => {
+      const updatedVoters = isPractice
+        ? prev.voters
+        : prev.voters.map((v) =>
+            v.voterId.toUpperCase() === activeVoter.voterId.toUpperCase()
+              ? { ...v, hasVoted: true, votedAt: newBallot.submittedAt }
+              : v
+          );
+
+      const ballotMap = new Map<string, Ballot>();
+      (prev.ballots || []).forEach((b) => ballotMap.set(b.id, b));
+      ballotMap.set(newBallot.id, newBallot);
+      const updatedBallots = Array.from(ballotMap.values());
+
+      const auditEntry = createChainedAuditEntry(prev.auditLogs, {
+        eventType: 'ballot_submitted',
+        details: isPractice
+          ? 'Demo practice ballot cast.'
+          : `Official anonymous ballot deposited. Total ballots: ${
+              updatedBallots.filter((b) => !b.isPractice).length
+            }/${prev.voters.length}.`,
+        category: 'ballot',
+        actor: 'Confidential Ballot Box',
+        actorRole: 'Voter',
+        metadata: {
+          isPractice,
+          ballotId: newBallot.id,
+          totalCast: updatedBallots.filter((b) => !b.isPractice).length,
+          totalEligible: prev.voters.length,
+        },
+      });
+
+      return {
+        ...prev,
+        voters: updatedVoters,
+        ballots: updatedBallots,
+        auditLogs: [...prev.auditLogs, auditEntry],
+      };
+    });
 
     clearBallotAutosave(voterId);
     try {
